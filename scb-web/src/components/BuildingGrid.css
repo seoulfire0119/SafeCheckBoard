@@ -1,0 +1,141 @@
+.grid-wrap { display: inline-block; min-width: 100%; }
+.grid-row { display: flex; align-items: center; gap: 2px; margin-bottom: 2px; }
+
+.floor-label {
+  width: 36px; flex-shrink: 0; text-align: center;
+  font-size: 11px; font-weight: 700; color: #666;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+.floor-label-pinan { color: #c62828; }
+.pinan-badge {
+  font-size: 7px; font-weight: 800; letter-spacing: .3px;
+  background: #e53935; color: #fff;
+  border-radius: 3px; padding: 1px 3px;
+  line-height: 1.3;
+}
+
+/* 층 라벨 편집 */
+.floor-label-text {
+  cursor: pointer;
+  border-radius: 3px; padding: 1px 2px;
+  transition: background .12s, color .12s;
+  display: block; width: 100%; text-align: center;
+}
+.floor-label-text:hover { background: #e8eaf6; color: #3f51b5; }
+.floor-label-custom { color: #3f51b5; }
+.floor-label-input {
+  width: 34px; font-size: 10px; font-weight: 700;
+  text-align: center; border: none;
+  border-bottom: 1.5px solid #3f51b5;
+  outline: none; background: #f0f3ff;
+  color: #3f51b5; padding: 1px 2px;
+  border-radius: 2px 2px 0 0;
+}
+
+.all-btn-placeholder { width: 38px; flex-shrink: 0; }
+.all-btn {
+  width: 38px; height: 42px; flex-shrink: 0;
+  background: #e8eaf6; color: #3f51b5;
+  font-size: 10px; font-weight: 700;
+  border-radius: 6px; border: none; cursor: pointer;
+  transition: background .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.all-btn:hover, .all-btn:active { background: #c5cae9; }
+
+.unit-header {
+  width: 56px; flex-shrink: 0; text-align: center;
+  font-size: 10px; font-weight: 700; color: #999;
+}
+.grid-divider { border: none; border-top: 1px solid #e0e0e0; margin: 2px 0 4px; }
+
+.unit-cell {
+  width: 56px; height: 42px; flex-shrink: 0;
+  border-radius: 6px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  cursor: pointer; border: 1px solid rgba(0,0,0,.1);
+  user-select: none; -webkit-tap-highlight-color: transparent;
+  transition: transform .1s, opacity .15s;
+  touch-action: manipulation;
+  position: relative;
+}
+.unit-cell:hover { opacity: .85; }
+.unit-cell:active { transform: scale(.94); }
+.unit-cell.selected { border: 2.5px solid #000; }
+.unit-cell.empty {
+  background: transparent !important;
+  border: 1px dashed #e0e0e0;
+  cursor: default; pointer-events: none;
+}
+.unit-num { font-size: 11px; font-weight: 600; line-height: 1.2; }
+
+/* 메모 인디케이터 */
+.memo-dot {
+  position: absolute;
+  top: 3px; right: 3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #ff9800;
+  border: 1.5px solid rgba(255,255,255,.85);
+}
+.memo-dot-pinned {
+  background: #e53935;
+  box-shadow: 0 0 5px rgba(229,57,53,.65);
+}
+
+/* 클릭 가능한 빈 셀 */
+.unit-cell.empty-activatable {
+  background: transparent !important;
+  border: 1px dashed #d5d5d5;
+  cursor: pointer; opacity: 1;
+  transition: background .12s, border-color .12s;
+}
+.unit-cell.empty-activatable:hover {
+  background: #f0f3ff !important;
+  border-color: #9fa8da;
+  border-style: solid;
+}
+.unit-cell.empty-activatable:active {
+  background: #e8eaf6 !important;
+}
+/* 숨겨진 층 그룹 */
+.hidden-seg-row {
+  display: flex; align-items: center; gap: 10px;
+  height: 28px; margin-bottom: 3px;
+  padding: 0 10px 0 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  background: #f5f5f5;
+  border: 1.5px dashed #ddd;
+  transition: background .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.hidden-seg-row:hover {
+  background: #e8eaf6;
+  border-color: #9fa8da;
+}
+.hidden-seg-row:active { background: #c5cae9; }
+
+.hidden-seg-label {
+  font-size: 11px; font-weight: 700; color: #aaa;
+  white-space: nowrap; flex-shrink: 0;
+}
+.hidden-seg-line {
+  flex: 1; height: 1px;
+  background: linear-gradient(to right, #ddd, transparent);
+  border-radius: 1px;
+}
+.hidden-seg-action {
+  font-size: 11px; font-weight: 600; color: #bbb;
+  white-space: nowrap; flex-shrink: 0;
+  transition: color .15s;
+}
+.hidden-seg-row:hover .hidden-seg-action { color: #3f51b5; }
+
+/* 모바일 */
+@media (max-width: 480px) {
+  .unit-cell, .all-btn { height: 38px; }
+  .unit-cell { width: 50px; }
+  .unit-header { width: 50px; }
+  .unit-num { font-size: 10px; }
+}

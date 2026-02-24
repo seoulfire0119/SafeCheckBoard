@@ -1,0 +1,20 @@
+# 의존성
+node_modules/
+
+# 빌드 결과물 (배포는 firebase로 따로 함)
+dist/
+
+# Claude Code 로컬 설정
+.claude/
+
+# 환경변수
+.env
+.env.local
+
+# 에디터
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
