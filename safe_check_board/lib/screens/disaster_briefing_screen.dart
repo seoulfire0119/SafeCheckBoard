@@ -5,6 +5,9 @@ import 'dart:html' as html;
 import '../models/briefing_record.dart';
 import '../services/briefing_service.dart';
 
+// ── 세션 내 저장 상태 ────────────────────────────────────────
+Map<String, dynamic> _savedBriefingDraft = {};
+
 // ── 시간대별 상황일지 항목 ──────────────────────────────────
 
 class _LogEntry {
@@ -72,7 +75,48 @@ class _DisasterBriefingScreenState extends State<DisasterBriefingScreen>
     final rec = widget.initialRecord;
     _tab = TabController(
         length: 3, vsync: this, initialIndex: rec?.tabType ?? 0);
-    if (rec != null) _loadRecord(rec);
+    if (rec != null) {
+      _loadRecord(rec);
+    } else if (_savedBriefingDraft.isNotEmpty) {
+      // 미저장 초안 복원 (새 브리핑으로 열 때만)
+      final f = _savedBriefingDraft;
+      _f1Date.text          = f['f1Date'] ?? '';
+      _f1Location.text      = f['f1Location'] ?? '';
+      _f1ResponseLevel.text = f['f1ResponseLevel'] ?? '';
+      _f1Personnel.text     = f['f1Personnel'] ?? '';
+      _f1Equipment.text     = f['f1Equipment'] ?? '';
+      _f1Dead.text          = f['f1Dead'] ?? '0';
+      _f1Injured.text       = f['f1Injured'] ?? '0';
+      _f1Missing.text       = f['f1Missing'] ?? '0';
+      _f1ExtRate.text       = f['f1ExtRate'] ?? '0';
+      _f1Hazard.text        = f['f1Hazard'] ?? '';
+      _f1Memo.text          = f['f1Memo'] ?? '';
+      _f2Summary.text       = f['f2Summary'] ?? '';
+      _f2Tactic.text        = f['f2Tactic'] ?? '';
+      _f2Rescue.text        = f['f2Rescue'] ?? '';
+      _f2Teams.text         = f['f2Teams'] ?? '';
+      _f2Area.text          = f['f2Area'] ?? '';
+      _f2Commander.text     = f['f2Commander'] ?? '';
+      _f2Hazard.text        = f['f2Hazard'] ?? '';
+      if (f['f2Log'] is List) {
+        _f2Log..clear()..addAll((f['f2Log'] as List).map((e) =>
+            _LogEntry(time: e['time'] ?? '', content: e['content'] ?? '')));
+        if (_f2Log.isEmpty) _f2Log.add(_LogEntry());
+      }
+      _f3Overview.text      = f['f3Overview'] ?? '';
+      _f3Resources.text     = f['f3Resources'] ?? '';
+      _f3Dead.text          = f['f3Dead'] ?? '0';
+      _f3Injured.text       = f['f3Injured'] ?? '0';
+      _f3Missing.text       = f['f3Missing'] ?? '0';
+      _f3Cause.text         = f['f3Cause'] ?? '';
+      _f3Issues.text        = f['f3Issues'] ?? '';
+      _f3JointInvest.text   = f['f3JointInvest'] ?? '';
+      if (f['f3Timeline'] is List) {
+        _f3Timeline..clear()..addAll((f['f3Timeline'] as List).map((e) =>
+            _LogEntry(time: e['time'] ?? '', content: e['content'] ?? '')));
+        if (_f3Timeline.isEmpty) _f3Timeline.add(_LogEntry());
+      }
+    }
   }
 
   void _loadRecord(BriefingRecord rec) {
@@ -223,6 +267,10 @@ class _DisasterBriefingScreenState extends State<DisasterBriefingScreen>
 
   @override
   void dispose() {
+    // 초안 저장 (새 브리핑이거나 Firebase 저장 전이면 draft에 보존)
+    if (widget.initialRecord == null) {
+      _savedBriefingDraft = _collectFields();
+    }
     _tab.dispose();
     for (final c in [
       _f1Date, _f1Location, _f1ResponseLevel, _f1Personnel, _f1Equipment,

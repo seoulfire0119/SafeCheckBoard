@@ -48,9 +48,15 @@ safe_check_board/lib/
 ├── services/
 │   └── firebase_service.dart        # Firestore CRUD + 스트림
 ├── screens/
-│   ├── session_screen.dart          # 홈 화면 (새 세션 / 세션 참여)
-│   ├── building_setup_screen.dart   # 건물 설정 화면
-│   └── dashboard_screen.dart        # 메인 대시보드
+│   ├── session_screen.dart              # 홈 화면 (새 세션 / 세션 참여)
+│   ├── building_setup_screen.dart       # 건물 설정 화면
+│   ├── dashboard_screen.dart            # 메인 대시보드
+│   ├── operation_map_screen.dart        # 현장 작전지도
+│   ├── incident_status_screen.dart      # 재난발생현황 (발생개요·피해·동원·주요활동)
+│   ├── disaster_response_screen.dart    # 재난대응활동 + 유관기관 활동사항
+│   ├── casualty_status_screen.dart      # 인명피해상황 (환자현황 + 페이지네이션)
+│   ├── disaster_briefing_screen.dart    # 재난대응브리핑자료 작성
+│   └── briefing_board_screen.dart       # 브리핑게시판 (Firebase 실시간)
 └── widgets/
     ├── grid/
     │   ├── building_grid.dart       # 건물 그리드 전체
@@ -70,16 +76,15 @@ safe_check_board/lib/
 
 ### UnitStatus (lib/constants/status.dart)
 
-6가지 상태. **enum 값 추가/삭제 시 Firestore 직렬화(`status.name`)도 함께 고려.**
+5가지 상태. **enum 값 추가/삭제 시 Firestore 직렬화(`status.name`)도 함께 고려.**
 
 | enum 값 | 한국어 | 배경색 | 글자색 |
 |---------|--------|--------|--------|
-| `unknown` | 미확인 | 회색 `#9E9E9E` | 검정 |
-| `empty` | 공실 | 하늘색 `#90CAF9` | 검정 |
-| `confirmed` | 확인완료 | 초록 `#66BB6A` | 흰색 |
-| `danger` | 화재층 | 빨강 `#EF5350` | 흰색 |
-| `fireFalseAlarm` | 연소확대층 | 주황 `#FFA726` | 흰색 |
-| `resourceBase` | 자원대기소 | 보라 `#AB47BC` | 흰색 |
+| `unknown` | 미확인 | 회색 `#757575` | 흰색 |
+| `confirmed` | 확인완료 | 초록 `#2E7D32` | 흰색 |
+| `danger` | 화재층 | 빨강 `#B71C1C` | 흰색 |
+| `fireFalseAlarm` | 연소확대층 | 주황 `#E65100` | 흰색 |
+| `resourceBase` | 자원대기소 | 보라 `#6A1B9A` | 흰색 |
 
 익스텐션 제공 속성: `.label`(한글 이름), `.color`(배경색), `.textColor`(글자색), `.icon`(아이콘)
 
@@ -180,10 +185,19 @@ SessionScreen (홈)
   ├─ 새 세션 시작 → Firebase 세션 생성(6자리 코드) → BuildingSetupScreen → DashboardScreen
   └─ 세션 참여 → 코드 입력 → (건물 있음) DashboardScreen
                             → (건물 없음) _WaitingScreen → DashboardScreen
+
+DashboardScreen (메인 대시보드) — 상단 메뉴(···)에서 이동
+  ├─ 현장 작전지도           → OperationMapScreen
+  ├─ 재난발생현황            → IncidentStatusScreen
+  ├─ 재난대응 · 유관기관     → DisasterResponseScreen
+  ├─ 인명피해상황            → CasualtyStatusScreen
+  ├─ 재난대응브리핑자료      → DisasterBriefingScreen (신규 작성 / 수정)
+  └─ 브리핑게시판            → BriefingBoardScreen (Firebase 실시간 목록)
 ```
 
 - `DashboardScreen`의 뒤로가기 → `SessionScreen` (BuildingSetupScreen 아님)
 - 로컬 모드: `sessionCode == null`일 때 Firebase 저장 없이 동작
+- 각 보조 화면은 뒤로가기 시 입력 데이터 세션 내 보존 (file-level static 변수)
 
 ---
 

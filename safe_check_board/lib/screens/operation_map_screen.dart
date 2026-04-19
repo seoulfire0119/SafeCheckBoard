@@ -46,46 +46,36 @@ extension MapItemCategoryX on MapItemCategory {
 enum MapItemType {
   // ── 건물/시설 ──
   building,
-  entrance,     // 출입구
-  road,         // 도로
-  fireHydrant,  // 소화전
+  entrance,        // 출입구
+  road,            // 도로
+  fireHydrant,     // 소화전
 
-  // ── 소방진압 차량 ──
-  pumpTruck,          // 펌프차
-  tankTruck,          // 물탱크차
-  highFoamTruck,      // 고발포차
-  foamTruck,          // 화학차(포말차)
-  dryPowderTruck,     // 분말차
-  aerialLadder,       // 고가사다리차
-  articulatedLadder,  // 굴절사다리차
-  highCapacityTruck,  // 대용량방수차
+  // ── 유관기관 (인원/거점 마커) ──
+  police,          // 경찰
+  cityHall,        // 시청
+  districtOffice,  // 구청
+  gasAgency,       // 가스
+  electricAgency,  // 전기
+  healthCenter,    // 보건소
 
-  // ── 구조·구급 차량 ──
-  rescueVehicle,      // 구조공작차
-  ambulance1,         // 구급차(1급)
-  ambulance2,         // 구급차(2급)
-  chemRescue,         // 화학구조차
-  commsVehicle,       // 이동통신차
+  // ── 소방진압 ──
+  pumpTruck,       // 펌프차
+  tankTruck,       // 탱크차
+  foamTruck,       // 화학차
+  aerialLadder,    // 고가차
+  articulatedLadder, // 굴절차
+  supportTender,   // 조연차
 
-  // ── 지휘·지원 차량 ──
-  commandCar,         // 지휘차
-  adminVehicle,       // 소방행정차
-  lightingTruck,      // 조명차
-  exhaustFan,         // 배연차(송풍차)
-  supportVehicle,     // 현장지원차
-  droneVehicle,       // 드론운용차
+  // ── 구조·구급 ──
+  rescueVehicle,   // 구조공작차
+  rescueBus,       // 구조버스
+  ambulance,       // 구급차
+  ambulanceNP,     // 구급차(음압)
 
-  // ── 유관기관 차량 ──
-  doctorCar,          // 닥터카
-  alliedAmbulance,    // 구급차(유관)
-  policeCar,          // 순찰차
-  policeBus,          // 경찰버스
-  electricSafetyCar,  // 전기안전차
-  gasCar,             // 가스긴급차
-  waterSupplyCar,     // 급수지원차
-  militaryTruck,      // 군 지원트럭
-  adminCommandCar,    // 행정지휘차
-  broadcastVehicle,   // 중계차·취재차
+  // ── 지휘·지원 ──
+  commandCar,      // 지휘차
+  headquartersCar, // 본부차
+  recoveryVehicle, // 회복차
 }
 
 extension MapItemTypeX on MapItemType {
@@ -97,39 +87,29 @@ extension MapItemTypeX on MapItemType {
       case MapItemType.road:
       case MapItemType.fireHydrant:
         return MapItemCategory.building;
+      case MapItemType.police:
+      case MapItemType.cityHall:
+      case MapItemType.districtOffice:
+      case MapItemType.gasAgency:
+      case MapItemType.electricAgency:
+      case MapItemType.healthCenter:
+        return MapItemCategory.allied;
       case MapItemType.pumpTruck:
       case MapItemType.tankTruck:
-      case MapItemType.highFoamTruck:
       case MapItemType.foamTruck:
-      case MapItemType.dryPowderTruck:
       case MapItemType.aerialLadder:
       case MapItemType.articulatedLadder:
-      case MapItemType.highCapacityTruck:
+      case MapItemType.supportTender:
         return MapItemCategory.fireVehicle;
       case MapItemType.rescueVehicle:
-      case MapItemType.ambulance1:
-      case MapItemType.ambulance2:
-      case MapItemType.chemRescue:
-      case MapItemType.commsVehicle:
+      case MapItemType.rescueBus:
+      case MapItemType.ambulance:
+      case MapItemType.ambulanceNP:
         return MapItemCategory.rescue;
       case MapItemType.commandCar:
-      case MapItemType.adminVehicle:
-      case MapItemType.lightingTruck:
-      case MapItemType.exhaustFan:
-      case MapItemType.supportVehicle:
-      case MapItemType.droneVehicle:
+      case MapItemType.headquartersCar:
+      case MapItemType.recoveryVehicle:
         return MapItemCategory.command;
-      case MapItemType.doctorCar:
-      case MapItemType.alliedAmbulance:
-      case MapItemType.policeCar:
-      case MapItemType.policeBus:
-      case MapItemType.electricSafetyCar:
-      case MapItemType.gasCar:
-      case MapItemType.waterSupplyCar:
-      case MapItemType.militaryTruck:
-      case MapItemType.adminCommandCar:
-      case MapItemType.broadcastVehicle:
-        return MapItemCategory.allied;
     }
   }
 
@@ -140,35 +120,25 @@ extension MapItemTypeX on MapItemType {
       case MapItemType.entrance:          return '출입구';
       case MapItemType.road:              return '도로';
       case MapItemType.fireHydrant:       return '소화전';
+      case MapItemType.police:            return '경찰';
+      case MapItemType.cityHall:          return '시청';
+      case MapItemType.districtOffice:    return '구청';
+      case MapItemType.gasAgency:         return '가스';
+      case MapItemType.electricAgency:    return '전기';
+      case MapItemType.healthCenter:      return '보건소';
       case MapItemType.pumpTruck:         return '펌프차';
-      case MapItemType.tankTruck:         return '물탱크차';
-      case MapItemType.highFoamTruck:     return '고발포차';
-      case MapItemType.foamTruck:         return '화학차(포말차)';
-      case MapItemType.dryPowderTruck:    return '분말차';
-      case MapItemType.aerialLadder:      return '고가사다리차';
-      case MapItemType.articulatedLadder: return '굴절사다리차';
-      case MapItemType.highCapacityTruck: return '대용량방수차';
+      case MapItemType.tankTruck:         return '탱크차';
+      case MapItemType.foamTruck:         return '화학차';
+      case MapItemType.aerialLadder:      return '고가차';
+      case MapItemType.articulatedLadder: return '굴절차';
+      case MapItemType.supportTender:     return '조연차';
       case MapItemType.rescueVehicle:     return '구조공작차';
-      case MapItemType.ambulance1:        return '구급차(1급)';
-      case MapItemType.ambulance2:        return '구급차(2급)';
-      case MapItemType.chemRescue:        return '화학구조차';
-      case MapItemType.commsVehicle:      return '이동통신차';
+      case MapItemType.rescueBus:         return '구조버스';
+      case MapItemType.ambulance:         return '구급차';
+      case MapItemType.ambulanceNP:       return '구급차(음압)';
       case MapItemType.commandCar:        return '지휘차';
-      case MapItemType.adminVehicle:      return '소방행정차';
-      case MapItemType.lightingTruck:     return '조명차';
-      case MapItemType.exhaustFan:        return '배연차(송풍차)';
-      case MapItemType.supportVehicle:    return '현장지원차';
-      case MapItemType.droneVehicle:      return '드론운용차';
-      case MapItemType.doctorCar:         return '닥터카';
-      case MapItemType.alliedAmbulance:   return '구급차(유관)';
-      case MapItemType.policeCar:         return '순찰차';
-      case MapItemType.policeBus:         return '경찰버스';
-      case MapItemType.electricSafetyCar: return '전기안전차';
-      case MapItemType.gasCar:            return '가스긴급차';
-      case MapItemType.waterSupplyCar:    return '급수지원차';
-      case MapItemType.militaryTruck:     return '군 지원트럭';
-      case MapItemType.adminCommandCar:   return '행정지휘차';
-      case MapItemType.broadcastVehicle:  return '중계차·취재차';
+      case MapItemType.headquartersCar:   return '본부차';
+      case MapItemType.recoveryVehicle:   return '회복차';
     }
   }
 
@@ -179,35 +149,25 @@ extension MapItemTypeX on MapItemType {
       case MapItemType.entrance:          return '출입구';
       case MapItemType.road:              return '도로';
       case MapItemType.fireHydrant:       return '소화전';
+      case MapItemType.police:            return '경찰';
+      case MapItemType.cityHall:          return '시청';
+      case MapItemType.districtOffice:    return '구청';
+      case MapItemType.gasAgency:         return '가스';
+      case MapItemType.electricAgency:    return '전기';
+      case MapItemType.healthCenter:      return '보건소';
       case MapItemType.pumpTruck:         return '펌프차';
-      case MapItemType.tankTruck:         return '물탱크차';
-      case MapItemType.highFoamTruck:     return '고발포차';
-      case MapItemType.foamTruck:         return '화학차\n포말';
-      case MapItemType.dryPowderTruck:    return '분말차';
-      case MapItemType.aerialLadder:      return '고가\n사다리';
-      case MapItemType.articulatedLadder: return '굴절\n사다리';
-      case MapItemType.highCapacityTruck: return '대용량\n방수차';
+      case MapItemType.tankTruck:         return '탱크차';
+      case MapItemType.foamTruck:         return '화학차';
+      case MapItemType.aerialLadder:      return '고가차';
+      case MapItemType.articulatedLadder: return '굴절차';
+      case MapItemType.supportTender:     return '조연차';
       case MapItemType.rescueVehicle:     return '구조\n공작차';
-      case MapItemType.ambulance1:        return '구급차\n1급';
-      case MapItemType.ambulance2:        return '구급차\n2급';
-      case MapItemType.chemRescue:        return '화학\n구조차';
-      case MapItemType.commsVehicle:      return '이동\n통신차';
+      case MapItemType.rescueBus:         return '구조버스';
+      case MapItemType.ambulance:         return '구급차';
+      case MapItemType.ambulanceNP:       return '구급차\n음압';
       case MapItemType.commandCar:        return '지휘차';
-      case MapItemType.adminVehicle:      return '소방\n행정차';
-      case MapItemType.lightingTruck:     return '조명차';
-      case MapItemType.exhaustFan:        return '배연차\n송풍차';
-      case MapItemType.supportVehicle:    return '현장\n지원차';
-      case MapItemType.droneVehicle:      return '드론\n운용차';
-      case MapItemType.doctorCar:         return '닥터카';
-      case MapItemType.alliedAmbulance:   return '구급차\n유관';
-      case MapItemType.policeCar:         return '순찰차';
-      case MapItemType.policeBus:         return '경찰버스';
-      case MapItemType.electricSafetyCar: return '전기\n안전차';
-      case MapItemType.gasCar:            return '가스\n긴급차';
-      case MapItemType.waterSupplyCar:    return '급수\n지원차';
-      case MapItemType.militaryTruck:     return '군\n지원트럭';
-      case MapItemType.adminCommandCar:   return '행정\n지휘차';
-      case MapItemType.broadcastVehicle:  return '중계차\n취재차';
+      case MapItemType.headquartersCar:   return '본부차';
+      case MapItemType.recoveryVehicle:   return '회복차';
     }
   }
 
@@ -218,100 +178,60 @@ extension MapItemTypeX on MapItemType {
       case MapItemType.entrance:          return Icons.sensor_door;
       case MapItemType.road:              return Icons.add_road;
       case MapItemType.fireHydrant:       return Icons.fire_hydrant;
+      case MapItemType.police:            return Icons.local_police;
+      case MapItemType.cityHall:          return Icons.account_balance;
+      case MapItemType.districtOffice:    return Icons.location_city;
+      case MapItemType.gasAgency:         return Icons.local_gas_station;
+      case MapItemType.electricAgency:    return Icons.electrical_services;
+      case MapItemType.healthCenter:      return Icons.local_hospital;
       case MapItemType.pumpTruck:         return Icons.local_fire_department;
       case MapItemType.tankTruck:         return Icons.water_drop;
-      case MapItemType.highFoamTruck:     return Icons.bubble_chart;
       case MapItemType.foamTruck:         return Icons.science;
-      case MapItemType.dryPowderTruck:    return Icons.grain;
       case MapItemType.aerialLadder:      return Icons.safety_check;
       case MapItemType.articulatedLadder: return Icons.fire_truck;
-      case MapItemType.highCapacityTruck: return Icons.water;
+      case MapItemType.supportTender:     return Icons.support;
       case MapItemType.rescueVehicle:     return Icons.construction;
-      case MapItemType.ambulance1:        return Icons.medical_services;
-      case MapItemType.ambulance2:        return Icons.medical_services;
-      case MapItemType.chemRescue:        return Icons.masks;
-      case MapItemType.commsVehicle:      return Icons.cell_tower;
+      case MapItemType.rescueBus:         return Icons.directions_bus;
+      case MapItemType.ambulance:         return Icons.medical_services;
+      case MapItemType.ambulanceNP:       return Icons.air;
       case MapItemType.commandCar:        return Icons.flag;
-      case MapItemType.adminVehicle:      return Icons.admin_panel_settings;
-      case MapItemType.lightingTruck:     return Icons.wb_sunny;
-      case MapItemType.exhaustFan:        return Icons.air;
-      case MapItemType.supportVehicle:    return Icons.inventory_2;
-      case MapItemType.droneVehicle:      return Icons.flight_takeoff;
-      case MapItemType.doctorCar:         return Icons.local_hospital;
-      case MapItemType.alliedAmbulance:   return Icons.emergency;
-      case MapItemType.policeCar:         return Icons.local_police;
-      case MapItemType.policeBus:         return Icons.directions_bus;
-      case MapItemType.electricSafetyCar: return Icons.electrical_services;
-      case MapItemType.gasCar:            return Icons.local_gas_station;
-      case MapItemType.waterSupplyCar:    return Icons.water_drop;
-      case MapItemType.militaryTruck:     return Icons.security;
-      case MapItemType.adminCommandCar:   return Icons.account_balance;
-      case MapItemType.broadcastVehicle:  return Icons.broadcast_on_personal;
+      case MapItemType.headquartersCar:   return Icons.account_balance;
+      case MapItemType.recoveryVehicle:   return Icons.health_and_safety;
     }
   }
 
   // ── 색상 ──
   Color get color {
     switch (this) {
-      case MapItemType.building:
-        return const Color(0xFF546E7A);
-      case MapItemType.entrance:
-        return const Color(0xFF00695C);
-      case MapItemType.road:
-        return const Color(0xFF455A64);
-      case MapItemType.fireHydrant:
-        return const Color(0xFFD32F2F);
-      // 소방진압
+      case MapItemType.building:          return const Color(0xFF546E7A);
+      case MapItemType.entrance:          return const Color(0xFF00695C);
+      case MapItemType.road:              return const Color(0xFF455A64);
+      case MapItemType.fireHydrant:       return const Color(0xFFD32F2F);
+      case MapItemType.police:            return const Color(0xFF1A237E);
+      case MapItemType.cityHall:          return const Color(0xFF37474F);
+      case MapItemType.districtOffice:    return const Color(0xFF455A64);
+      case MapItemType.gasAgency:         return const Color(0xFFE65100);
+      case MapItemType.electricAgency:    return const Color(0xFFF9A825);
+      case MapItemType.healthCenter:      return const Color(0xFF00838F);
       case MapItemType.pumpTruck:         return const Color(0xFFC62828);
       case MapItemType.tankTruck:         return const Color(0xFF1565C0);
-      case MapItemType.highFoamTruck:     return const Color(0xFF558B2F);
       case MapItemType.foamTruck:         return const Color(0xFF6A1B9A);
-      case MapItemType.dryPowderTruck:    return const Color(0xFF795548);
       case MapItemType.aerialLadder:      return const Color(0xFFE65100);
       case MapItemType.articulatedLadder: return const Color(0xFFB71C1C);
-      case MapItemType.highCapacityTruck: return const Color(0xFF006064);
-      // 구조·구급
+      case MapItemType.supportTender:     return const Color(0xFF795548);
       case MapItemType.rescueVehicle:     return const Color(0xFF1B5E20);
-      case MapItemType.ambulance1:        return const Color(0xFF2E7D32);
-      case MapItemType.ambulance2:        return const Color(0xFF388E3C);
-      case MapItemType.chemRescue:        return const Color(0xFF4A148C);
-      case MapItemType.commsVehicle:      return const Color(0xFF37474F);
-      // 지휘·지원
+      case MapItemType.rescueBus:         return const Color(0xFF33691E);
+      case MapItemType.ambulance:         return const Color(0xFF2E7D32);
+      case MapItemType.ambulanceNP:       return const Color(0xFF00695C);
       case MapItemType.commandCar:        return const Color(0xFF1565C0);
-      case MapItemType.adminVehicle:      return const Color(0xFF0D47A1);
-      case MapItemType.lightingTruck:     return const Color(0xFFF57F17);
-      case MapItemType.exhaustFan:        return const Color(0xFF546E7A);
-      case MapItemType.supportVehicle:    return const Color(0xFF4E342E);
-      case MapItemType.droneVehicle:      return const Color(0xFF00695C);
-      // 유관기관
-      case MapItemType.doctorCar:         return const Color(0xFF00838F);
-      case MapItemType.alliedAmbulance:   return const Color(0xFF2E7D32);
-      case MapItemType.policeCar:         return const Color(0xFF283593);
-      case MapItemType.policeBus:         return const Color(0xFF1A237E);
-      case MapItemType.electricSafetyCar: return const Color(0xFFF9A825);
-      case MapItemType.gasCar:            return const Color(0xFFE65100);
-      case MapItemType.waterSupplyCar:    return const Color(0xFF0277BD);
-      case MapItemType.militaryTruck:     return const Color(0xFF33691E);
-      case MapItemType.adminCommandCar:   return const Color(0xFF37474F);
-      case MapItemType.broadcastVehicle:  return const Color(0xFF6A1B9A);
+      case MapItemType.headquartersCar:   return const Color(0xFF0D47A1);
+      case MapItemType.recoveryVehicle:   return const Color(0xFF4E342E);
     }
   }
 
-  // ── 기본 셀 크기: 건물=2×3, 차량류=1×1 ──
-  int get cellW {
-    switch (this) {
-      case MapItemType.building: return 5;
-      case MapItemType.road:     return 3;
-      default:                   return 1;
-    }
-  }
-  int get cellH {
-    switch (this) {
-      case MapItemType.building: return 5;
-      case MapItemType.road:     return 1;
-      default:                   return 1;
-    }
-  }
+  // ── 기본 셀 크기 ──
+  int get cellW => this == MapItemType.building ? 5 : 1;
+  int get cellH => this == MapItemType.building ? 5 : 1;
 }
 
 class MapItem {
@@ -322,6 +242,7 @@ class MapItem {
   String? customLabel;
   int? customW;
   int? customH;
+  Color? customColor;
 
   MapItem({
     required this.id,
@@ -331,14 +252,36 @@ class MapItem {
     this.customLabel,
     this.customW,
     this.customH,
+    this.customColor,
   });
 
   int get w => customW ?? type.cellW;
   int get h => customH ?? type.cellH;
   String get displayLabel => customLabel ?? type.label;
+  Color get displayColor => customColor ?? type.color;
 }
 
+// 색상 프리셋 10가지
+const List<Color> kTileColors = [
+  Color(0xFFC62828), // 빨강
+  Color(0xFFE65100), // 주황
+  Color(0xFFF9A825), // 노랑
+  Color(0xFF2E7D32), // 초록
+  Color(0xFF00695C), // 청록
+  Color(0xFF1565C0), // 파랑
+  Color(0xFF4A148C), // 보라
+  Color(0xFF880E4F), // 자주
+  Color(0xFF4E342E), // 갈색
+  Color(0xFF546E7A), // 회청
+];
+
 // ── Screen ─────────────────────────────────────────────────
+
+// ── 진압작전도 영속 데이터 (화면 이탈 후 복원용) ──────────────
+List<MapItem> _savedMapItems = [];
+int _savedMapNextId = 0;
+int _savedMapCols = 48;
+int _savedMapRows = 36;
 
 class OperationMapScreen extends StatefulWidget {
   const OperationMapScreen({super.key});
@@ -349,15 +292,15 @@ class OperationMapScreen extends StatefulWidget {
 
 class _OperationMapScreenState extends State<OperationMapScreen> {
   static const double _cell = 64.0;
-  int _cols = 48;
-  int _rows = 36;
+  late int _cols;
+  late int _rows;
 
-  final List<MapItem> _items = [];
-  MapItemCategory? _paletteCategory; // 1단계: 대분류 열림 상태
-  MapItemType? _paletteType;         // 2단계: 배치할 유형 선택
+  late List<MapItem> _items;
+  MapItemCategory? _paletteCategory;
+  MapItemType? _paletteType;
   String? _selectedId;
   String? _movingId;
-  int _nextId = 0;
+  late int _nextId;
 
   // 아이템 드래그 state (Listener 기반)
   String? _draggingId;
@@ -370,16 +313,41 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
   int? _hoverCol;
   int? _hoverRow;
 
+  // 페인트 드래그 (팔레트 유형 선택 후 드래그 배치)
+  Set<String> _paintedCells = {}; // 현재 드래그 중 배치된 셀 (중복 방지)
+  bool _isPainting = false;
+
+  // 지우개 모드
+  bool _eraserMode = false;
+  bool _isErasing = false;
+
+  // 그룹 선택/병합 모드
+  bool _groupMode = false;
+  Set<String> _groupSelectedIds = {};
+  Offset? _groupDragStart;
+  Offset? _groupDragEnd;
+
   // InteractiveViewer 컨트롤러 (pan 비활성화용)
   final TransformationController _transformCtrl = TransformationController();
 
-  // 캔버스 SizedBox GlobalKey (배치 tap 좌표용 — 이미 사용)
   final GlobalKey _canvasKey = GlobalKey();
-  // Viewport (InteractiveViewer 감싸는 Expanded 내 MouseRegion) GlobalKey
   final GlobalKey _viewportKey = GlobalKey();
 
   @override
+  void initState() {
+    super.initState();
+    _cols = _savedMapCols;
+    _rows = _savedMapRows;
+    _nextId = _savedMapNextId;
+    _items = List.from(_savedMapItems);
+  }
+
+  @override
   void dispose() {
+    _savedMapItems = List.from(_items);
+    _savedMapNextId = _nextId;
+    _savedMapCols = _cols;
+    _savedMapRows = _rows;
     _transformCtrl.dispose();
     super.dispose();
   }
@@ -404,10 +372,9 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
             tooltip: '캔버스 크기',
             onPressed: _showCanvasSizeDialog,
           ),
-          IconButton(
-            icon: const Icon(Icons.layers_clear_outlined),
-            tooltip: '전체 초기화',
+          TextButton(
             onPressed: _confirmClear,
+            child: const Text('새로하기', style: TextStyle(color: Colors.white70, fontSize: 13)),
           ),
         ],
       ),
@@ -420,14 +387,38 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
             child: Row(children: [
               const Icon(Icons.info_outline, size: 13, color: Colors.white38),
               const SizedBox(width: 6),
+              if (_groupMode && _groupSelectedIds.length >= 2) ...[
+                Expanded(
+                  child: Text(
+                    '${_groupSelectedIds.length}개 선택됨',
+                    style: const TextStyle(fontSize: 11, color: Colors.white54),
+                  ),
+                ),
+                InkWell(
+                  onTap: _mergeGroupSelected,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade700,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text('병합하기', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ] else
               Text(
-                _movingId != null
-                    ? '이동할 위치를 탭하세요 · 취소는 하단 취소 버튼'
-                    : _paletteType != null
-                        ? '빈 곳 탭하면 배치 · 드래그로 이동'
-                        : _paletteCategory != null
-                            ? '세부 유형을 선택하세요'
-                            : '아이콘 탭 → 편집 · 드래그 → 이동',
+                _groupMode
+                    ? '드래그로 합칠 아이템을 선택하세요'
+                    : _eraserMode
+                        ? '탭 또는 드래그로 아이템 삭제'
+                        : _movingId != null
+                        ? '이동할 위치를 탭하세요 · 취소는 하단 취소 버튼'
+                        : _paletteType != null
+                            ? '탭 또는 드래그로 연속 배치'
+                            : _paletteCategory != null
+                                ? '세부 유형을 선택하세요'
+                                : '아이콘 탭 → 편집 · 드래그 → 이동',
                 style: const TextStyle(fontSize: 11, color: Colors.white54),
               ),
             ]),
@@ -457,10 +448,13 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
       boundaryMargin: const EdgeInsets.all(200),
       minScale: 0.3,
       maxScale: 4.0,
-      panEnabled: _draggingId == null,
+      panEnabled: _draggingId == null && _paletteType == null && _movingId == null && !_eraserMode && !_groupMode,
       child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTapDown: _onBgTap,
+          onTapDown: _eraserMode ? _onEraserTap : (_groupMode ? null : _onBgTap),
+          onPanStart: _eraserMode ? _onEraserStart : (_groupMode ? _onGroupStart : (_paletteType != null ? _onPaintStart : null)),
+          onPanUpdate: _eraserMode ? _onEraserUpdate : (_groupMode ? _onGroupUpdate : (_paletteType != null ? _onPaintUpdate : null)),
+          onPanEnd: _eraserMode ? _onEraserEnd : (_groupMode ? _onGroupEnd : (_paletteType != null ? _onPaintEnd : null)),
           child: SizedBox(
             key: _canvasKey,
             width: w,
@@ -471,6 +465,43 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
                   size: Size(w, h),
                   painter: _GridPainter(cell: _cell),
                 ),
+                // 페인트 드래그 — 이번 드래그에서 배치된 셀 하이라이트
+                if (_isPainting)
+                  ..._paintedCells.map((key) {
+                    final p = key.split(',');
+                    final c = int.parse(p[0]);
+                    final r = int.parse(p[1]);
+                    return Positioned(
+                      left: c * _cell, top: r * _cell,
+                      width: _cell, height: _cell,
+                      child: IgnorePointer(
+                        child: Container(
+                          margin: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.green.shade400, width: 1.5),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                // 그룹 모드 — 드래그 선택 사각형
+                if (_groupMode && _groupDragStart != null && _groupDragEnd != null)
+                  Positioned(
+                    left: _groupDragStart!.dx < _groupDragEnd!.dx ? _groupDragStart!.dx : _groupDragEnd!.dx,
+                    top: _groupDragStart!.dy < _groupDragEnd!.dy ? _groupDragStart!.dy : _groupDragEnd!.dy,
+                    width: (_groupDragEnd!.dx - _groupDragStart!.dx).abs(),
+                    height: (_groupDragEnd!.dy - _groupDragStart!.dy).abs(),
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withOpacity(0.15),
+                          border: Border.all(color: Colors.amber.shade400, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
                 // 배치 미리보기 (팔레트 선택 시)
                 if (_paletteType != null &&
                     _hoverCol != null &&
@@ -510,13 +541,13 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(type.icon, color: Colors.green.shade300, size: 22),
+                Icon(type.icon, color: Colors.green.shade300, size: 26),
                 const SizedBox(height: 2),
                 Text(
                   type.label,
                   style: TextStyle(
                     color: Colors.green.shade300,
-                    fontSize: 8,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
@@ -572,19 +603,34 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
     );
   }
 
+  bool _isBackgroundType(MapItemType t) =>
+      t == MapItemType.road || t == MapItemType.entrance ||
+      t == MapItemType.fireHydrant || t == MapItemType.building;
+
   List<Widget> _buildItemWidgets() {
-    return _items.map((item) {
+    // 배경 아이템(도로·출입구·소화전)을 먼저 렌더링 → 차량이 위에 올라옴
+    final sorted = [..._items]..sort((a, b) {
+        final ab = _isBackgroundType(a.type) ? 0 : 1;
+        final bb = _isBackgroundType(b.type) ? 0 : 1;
+        return ab.compareTo(bb);
+      });
+    return sorted.map((item) {
       final isSel = _selectedId == item.id;
       final isDrag = _draggingId == item.id;
+      final isGroupSel = _groupSelectedIds.contains(item.id);
       return Positioned(
         left: item.col * _cell,
         top: item.row * _cell,
         width: item.w * _cell,
         height: item.h * _cell,
-        child: MouseRegion(
-          cursor: isDrag
-              ? SystemMouseCursors.grabbing
-              : SystemMouseCursors.grab,
+        child: IgnorePointer(
+          ignoring: _eraserMode || _groupMode,
+          child: MouseRegion(
+          cursor: _eraserMode
+              ? SystemMouseCursors.none
+              : isDrag
+                  ? SystemMouseCursors.grabbing
+                  : SystemMouseCursors.grab,
           child: Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: (e) {
@@ -638,8 +684,11 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
               isSelected: isSel,
               isDragging: isDrag,
               cell: _cell,
+              erasing: _eraserMode,
+              groupSelected: isGroupSel,
             ),
           ),
+        ),
         ),
       );
     }).toList();
@@ -701,6 +750,137 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
     });
   }
 
+  // ── 그룹 선택/병합 ──────────────────────────────────────────
+
+  void _onGroupStart(DragStartDetails d) {
+    setState(() {
+      _groupDragStart = d.localPosition;
+      _groupDragEnd = d.localPosition;
+      _groupSelectedIds.clear();
+    });
+  }
+
+  void _onGroupUpdate(DragUpdateDetails d) {
+    final dragRect = Rect.fromPoints(_groupDragStart!, d.localPosition);
+    final newSel = <String>{};
+    for (final item in _items) {
+      final itemRect = Rect.fromLTWH(
+        item.col * _cell, item.row * _cell,
+        item.w * _cell, item.h * _cell,
+      );
+      if (dragRect.overlaps(itemRect)) newSel.add(item.id);
+    }
+    setState(() {
+      _groupDragEnd = d.localPosition;
+      _groupSelectedIds = newSel;
+    });
+  }
+
+  void _onGroupEnd(DragEndDetails _) {
+    setState(() { _groupDragStart = null; _groupDragEnd = null; });
+  }
+
+  void _mergeGroupSelected() {
+    final selected = _items.where((i) => _groupSelectedIds.contains(i.id)).toList();
+    if (selected.length < 2) return;
+    final minCol = selected.map((i) => i.col).reduce((a, b) => a < b ? a : b);
+    final minRow = selected.map((i) => i.row).reduce((a, b) => a < b ? a : b);
+    final maxColEnd = selected.map((i) => i.col + i.w).reduce((a, b) => a > b ? a : b);
+    final maxRowEnd = selected.map((i) => i.row + i.h).reduce((a, b) => a > b ? a : b);
+    final newW = (maxColEnd - minCol).round();
+    final newH = (maxRowEnd - minRow).round();
+    final type = selected.first.type;
+    setState(() {
+      _items.removeWhere((i) => _groupSelectedIds.contains(i.id));
+      _items.add(MapItem(
+        id: '${_nextId++}',
+        type: type,
+        col: minCol,
+        row: minRow,
+        customW: newW,
+        customH: newH,
+      ));
+      _groupSelectedIds.clear();
+      _groupMode = false;
+    });
+  }
+
+  // ── 지우개 드래그 ───────────────────────────────────────────
+
+  void _onEraserTap(TapDownDetails d) => _eraseAt(d.localPosition);
+
+  void _onEraserStart(DragStartDetails d) {
+    setState(() => _isErasing = true);
+    _eraseAt(d.localPosition);
+  }
+
+  void _onEraserUpdate(DragUpdateDetails d) => _eraseAt(d.localPosition);
+
+  void _onEraserEnd(DragEndDetails _) => setState(() => _isErasing = false);
+
+  void _eraseAt(Offset localPos) {
+    final px = localPos.dx / _cell;
+    final py = localPos.dy / _cell;
+    final toRemove = _items.where((item) =>
+        px >= item.col && px < item.col + item.w &&
+        py >= item.row && py < item.row + item.h).toList();
+    if (toRemove.isEmpty) return;
+    setState(() {
+      for (final item in toRemove) {
+        _items.remove(item);
+        if (_selectedId == item.id) _selectedId = null;
+      }
+    });
+  }
+
+  // ── 페인트 드래그 (팔레트 유형 선택 후 드래그 연속 배치) ────────
+
+  void _onPaintStart(DragStartDetails d) {
+    if (_paletteType == null) return;
+    setState(() {
+      _isPainting = true;
+      _paintedCells.clear();
+    });
+    _paintCell(d.localPosition);
+  }
+
+  void _onPaintUpdate(DragUpdateDetails d) {
+    if (!_isPainting || _paletteType == null) return;
+    _paintCell(d.localPosition);
+  }
+
+  void _onPaintEnd(DragEndDetails _) {
+    setState(() {
+      _isPainting = false;
+      _paintedCells.clear();
+    });
+  }
+
+  void _paintCell(Offset localPos) {
+    if (_paletteType == null) return;
+    final type = _paletteType!;
+    final c = (localPos.dx / _cell).floor().clamp(0, _cols - type.cellW);
+    final r = (localPos.dy / _cell).floor().clamp(0, _rows - type.cellH);
+    final key = '$c,$r';
+    if (_paintedCells.contains(key)) return; // 이번 드래그에서 이미 배치
+    // 해당 셀 범위에 기존 아이템이 있으면 스킵
+    final occupied = _items.any((item) =>
+        c < item.col + item.w && c + type.cellW > item.col &&
+        r < item.row + item.h && r + type.cellH > item.row);
+    if (occupied) return;
+    setState(() {
+      _paintedCells.add(key);
+      _items.add(MapItem(
+        id: '${_nextId++}',
+        type: type,
+        col: c.toDouble(),
+        row: r.toDouble(),
+        customW: type.cellW == 1 ? null : 1,
+        customH: type.cellH == 1 ? null : 1,
+      ));
+    });
+  }
+
   // ── Palette ───────────────────────────────────────────────
 
   Widget _buildPalette() {
@@ -744,6 +924,80 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
                     margin:
                         const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
                     color: Colors.white24),
+              // 지우개 버튼
+              InkWell(
+                onTap: () => setState(() {
+                  _eraserMode = !_eraserMode;
+                  if (_eraserMode) {
+                    _paletteType = null;
+                    _movingId = null;
+                  }
+                }),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: 52,
+                  color: _eraserMode ? Colors.red.withOpacity(0.25) : Colors.transparent,
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.auto_fix_normal,
+                          color: _eraserMode ? Colors.red.shade300 : Colors.white38,
+                          size: 20),
+                      const SizedBox(height: 2),
+                      Text(
+                        '지우개',
+                        style: TextStyle(
+                          color: _eraserMode ? Colors.red.shade300 : Colors.white38,
+                          fontSize: 9,
+                          fontWeight: _eraserMode ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 그룹 버튼
+              InkWell(
+                onTap: () => setState(() {
+                  _groupMode = !_groupMode;
+                  if (_groupMode) {
+                    _eraserMode = false;
+                    _paletteType = null;
+                    _movingId = null;
+                  } else {
+                    _groupSelectedIds.clear();
+                  }
+                }),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: 52,
+                  color: _groupMode ? Colors.amber.withOpacity(0.25) : Colors.transparent,
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.select_all,
+                          color: _groupMode ? Colors.amber.shade300 : Colors.white38,
+                          size: 20),
+                      const SizedBox(height: 2),
+                      Text(
+                        '그룹',
+                        style: TextStyle(
+                          color: _groupMode ? Colors.amber.shade300 : Colors.white38,
+                          fontSize: 9,
+                          fontWeight: _groupMode ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+                color: Colors.white24,
+              ),
               // 카테고리 버튼들
               Expanded(
                 child: ListView(
@@ -819,8 +1073,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
                         color: type.color,
                         isSelected: _paletteType == type,
                         onTap: () => setState(() {
-                          _paletteType =
-                              _paletteType == type ? null : type;
+                          _paletteType = _paletteType == type ? null : type;
                           _selectedId = null;
                         }),
                       ))
@@ -878,9 +1131,11 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
         text: item.customLabel ?? item.type.label);
     final wCtrl = TextEditingController(text: '${item.w}');
     final hCtrl = TextEditingController(text: '${item.h}');
+    Color? pickedColor = item.customColor; // null = 기본값
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
         title: Text('${item.type.label} 편집'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -924,6 +1179,53 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('색상', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // 기본값 버튼
+                GestureDetector(
+                  onTap: () => setDlgState(() => pickedColor = null),
+                  child: Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: item.type.color,
+                      shape: BoxShape.circle,
+                      border: pickedColor == null
+                          ? Border.all(color: Colors.black, width: 3)
+                          : Border.all(color: Colors.grey.shade300, width: 1.5),
+                    ),
+                    child: pickedColor == null
+                        ? const Icon(Icons.check, color: Colors.white, size: 16)
+                        : null,
+                  ),
+                ),
+                // 프리셋 10가지
+                for (final c in kTileColors)
+                  GestureDetector(
+                    onTap: () => setDlgState(() => pickedColor = c),
+                    child: Container(
+                      width: 32, height: 32,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: pickedColor == c
+                            ? Border.all(color: Colors.black, width: 3)
+                            : Border.all(color: Colors.grey.shade300, width: 1.5),
+                      ),
+                      child: pickedColor == c
+                          ? const Icon(Icons.check, color: Colors.white, size: 16)
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
         actions: [
@@ -962,6 +1264,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
                   item.customW = newW == item.type.cellW ? null : newW;
                 if (newH != null && newH >= 1)
                   item.customH = newH == item.type.cellH ? null : newH;
+                item.customColor = pickedColor;
                 // 캔버스 범위 보정
                 item.col = item.col.clamp(0, _cols - item.w.toDouble());
                 item.row = item.row.clamp(0, _rows - item.h.toDouble());
@@ -971,6 +1274,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
             child: const Text('저장'),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1052,12 +1356,11 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
   }
 
   void _confirmClear() {
-    if (_items.isEmpty) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('전체 초기화'),
-        content: const Text('모든 배치 항목을 삭제하시겠습니까?'),
+        title: const Text('새로하기'),
+        content: const Text('모든 배치 항목을 삭제하고 새로 시작하시겠습니까?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -1068,10 +1371,18 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
               setState(() {
                 _items.clear();
                 _selectedId = null;
+                _nextId = 0;
+                _cols = 48;
+                _rows = 36;
               });
+              // 영속 데이터도 초기화
+              _savedMapItems = [];
+              _savedMapNextId = 0;
+              _savedMapCols = 48;
+              _savedMapRows = 36;
               Navigator.pop(ctx);
             },
-            child: const Text('초기화'),
+            child: const Text('새로하기'),
           ),
         ],
       ),
@@ -1086,29 +1397,39 @@ class _ItemCard extends StatelessWidget {
   final bool isSelected;
   final bool isDragging;
   final double cell;
+  final bool erasing;
+  final bool groupSelected;
 
   const _ItemCard({
     required this.item,
     required this.isSelected,
     required this.isDragging,
     required this.cell,
+    this.erasing = false,
+    this.groupSelected = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final totalCells = item.w * item.h;
     final isBig = totalCells >= 4;
-    final iconSize = isBig ? 30.0 : (totalCells >= 2 ? 26.0 : 22.0);
-    final fontSize = isBig ? 10.0 : (totalCells >= 2 ? 9.0 : 8.0);
+    final iconSize = isBig ? 38.0 : (totalCells >= 2 ? 32.0 : 26.0);
+    final fontSize = isBig ? 14.0 : (totalCells >= 2 ? 13.0 : 12.0);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 80),
       margin: EdgeInsets.all(isBig ? 5 : 4),
       decoration: BoxDecoration(
-        color: item.type.color.withOpacity(isDragging ? 0.65 : 0.88),
+        color: erasing
+            ? Colors.red.shade400.withOpacity(0.6)
+            : item.displayColor.withOpacity(isDragging ? 0.65 : 0.88),
         borderRadius: BorderRadius.circular(isBig ? 10 : 8),
-        border: isSelected
-            ? Border.all(color: Colors.white, width: 2.5)
-            : Border.all(color: Colors.white.withOpacity(0.25), width: 1),
+        border: erasing
+            ? Border.all(color: Colors.red.shade300, width: 2)
+            : groupSelected
+                ? Border.all(color: Colors.amber.shade300, width: 2.5)
+                : isSelected
+                    ? Border.all(color: Colors.white, width: 2.5)
+                    : Border.all(color: Colors.white.withOpacity(0.25), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDragging ? 0.5 : 0.25),
@@ -1178,13 +1499,13 @@ class _PaletteButton extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: isSelected ? color : Colors.white60, size: 22),
+            Icon(icon, color: isSelected ? color : Colors.white60, size: 26),
             const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
                 color: isSelected ? Colors.white : Colors.white54,
-                fontSize: 8,
+                fontSize: 11,
                 fontWeight:
                     isSelected ? FontWeight.bold : FontWeight.normal,
               ),

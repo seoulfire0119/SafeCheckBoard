@@ -17,6 +17,9 @@ import 'session_screen.dart';
 import 'operation_map_screen.dart';
 import 'disaster_briefing_screen.dart';
 import 'briefing_board_screen.dart';
+import 'incident_status_screen.dart';
+import 'disaster_response_screen.dart';
+import 'casualty_status_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String? sessionCode;       // Firebase 세션 코드 (없으면 로컬 모드)
@@ -548,6 +551,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ? stats.rescued
             : stats.notFound;
     final controller = TextEditingController(text: current.toString());
+    final focusNode = FocusNode();
+
+    void commit(BuildContext ctx) {
+      final v = (int.tryParse(controller.text.trim()) ?? current).clamp(0, 999);
+      setState(() {
+        if (field == 'selfEvac') stats.selfEvac = v;
+        if (field == 'rescued') stats.rescued = v;
+        if (field == 'notFound') stats.notFound = v;
+      });
+      _scheduleSave();
+      Navigator.pop(ctx);
+    }
 
     showDialog(
       context: context,
@@ -555,29 +570,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text(_personnelLabel(field)),
         content: TextField(
           controller: controller,
+          focusNode: focusNode,
           keyboardType: TextInputType.number,
           autofocus: true,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(3),
+          ],
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: '0 ~ 999',
+            suffixText: '명',
+          ),
+          onSubmitted: (_) => commit(ctx),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
-          FilledButton(
-            onPressed: () {
-              final v = int.tryParse(controller.text.trim()) ?? current;
-              setState(() {
-                if (field == 'selfEvac') stats.selfEvac = v;
-                if (field == 'rescued') stats.rescued = v;
-                if (field == 'notFound') stats.notFound = v;
-              });
-              _scheduleSave();
-              Navigator.pop(ctx);
-            },
-            child: const Text('확인'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          FilledButton(onPressed: () => commit(ctx), child: const Text('확인')),
         ],
       ),
-    );
+    ).then((_) {
+      controller.dispose();
+      focusNode.dispose();
+    });
+
+    // autofocus가 웹에서 불안정하므로 딜레이 후 강제 포커스
+    Future.delayed(const Duration(milliseconds: 80), () {
+      if (focusNode.canRequestFocus) {
+        focusNode.requestFocus();
+        controller.selection = TextSelection(
+            baseOffset: 0, extentOffset: controller.text.length);
+      }
+    });
   }
 
   String _personnelLabel(String field) {
@@ -748,6 +772,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           color: const Color(0xFF1E2A4A),
           onSelected: (value) {
             switch (value) {
+              case '__close__':
+                break;
               case 'timer':
                 setState(() => _currentTab = _currentTab == 1 ? 0 : 1);
                 break;
@@ -763,9 +789,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const BriefingBoardScreen()));
                 break;
+              case 'incident':
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const IncidentStatusScreen()));
+                break;
+              case 'response':
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const DisasterResponseScreen()));
+                break;
+              case 'casualty':
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CasualtyStatusScreen()));
+                break;
             }
           },
           itemBuilder: (ctx) => [
+            // 헤더 — 닫기 버튼
+            PopupMenuItem(
+              value: '__close__',
+              padding: EdgeInsets.zero,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: Colors.white.withAlpha(30)),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.close, size: 16, color: Colors.white54),
+                    const SizedBox(width: 8),
+                    const Text('메뉴 닫기',
+                        style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
             PopupMenuItem(
               value: 'timer',
               child: Row(children: [
@@ -804,6 +863,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icon(Icons.dashboard_outlined, size: 16, color: Colors.white70),
                 SizedBox(width: 10),
                 Text('브리핑 게시판',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'incident',
+              child: Row(children: [
+                Icon(Icons.assignment_outlined, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('재난발생현황',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'response',
+              child: Row(children: [
+                Icon(Icons.access_time_filled, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('재난대응 · 유관기관',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'casualty',
+              child: Row(children: [
+                Icon(Icons.personal_injury_outlined, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('인명피해상황',
                     style: TextStyle(color: Colors.white, fontSize: 13)),
               ]),
             ),
@@ -965,30 +1051,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildPersonnelStat(
       int idx, String label, int value, String field, Color color) {
-    return GestureDetector(
-      onTap: () => _editPersonnelStat(idx, field),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 9,
-              color: color.withAlpha(200),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          Text(
-            value.toString(),
-            style: TextStyle(
-              fontSize: 20,
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
-      ),
+    return _PersonnelStatCell(
+      label: label,
+      value: value,
+      color: color,
+      onChanged: (v) {
+        final stats = _personnelStats[idx];
+        setState(() {
+          if (field == 'selfEvac') stats.selfEvac = v;
+          if (field == 'rescued') stats.rescued = v;
+          if (field == 'notFound') stats.notFound = v;
+        });
+        _scheduleSave();
+      },
     );
   }
 
@@ -1060,6 +1135,140 @@ class _DashboardScreenState extends State<DashboardScreen> {
               '건물 추가',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── 인명현황 인라인 편집 셀 ──────────────────────────────────
+
+class _PersonnelStatCell extends StatefulWidget {
+  final String label;
+  final int value;
+  final Color color;
+  final ValueChanged<int> onChanged;
+
+  const _PersonnelStatCell({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  @override
+  State<_PersonnelStatCell> createState() => _PersonnelStatCellState();
+}
+
+class _PersonnelStatCellState extends State<_PersonnelStatCell> {
+  late final TextEditingController _ctrl;
+  final FocusNode _focus = FocusNode();
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.value.toString());
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _editing) _commit();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_PersonnelStatCell old) {
+    super.didUpdateWidget(old);
+    if (!_editing && old.value != widget.value) {
+      _ctrl.text = widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _startEdit() {
+    setState(() {
+      _editing = true;
+      _ctrl.selection =
+          TextSelection(baseOffset: 0, extentOffset: _ctrl.text.length);
+    });
+    _focus.requestFocus();
+  }
+
+  void _commit() {
+    final v = (int.tryParse(_ctrl.text.trim()) ?? widget.value).clamp(0, 999);
+    setState(() {
+      _editing = false;
+      _ctrl.text = v.toString();
+    });
+    widget.onChanged(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _startEdit,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: _editing
+            ? BoxDecoration(
+                border: Border.all(color: widget.color, width: 1.5),
+                borderRadius: BorderRadius.circular(6),
+              )
+            : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 9,
+                color: widget.color.withAlpha(200),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 1),
+            _editing
+                ? SizedBox(
+                    width: 56,
+                    child: TextField(
+                      controller: _ctrl,
+                      focusNode: _focus,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(3),
+                      ],
+                      style: TextStyle(
+                        fontSize: 22,
+                        color: widget.color,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                      ),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 2, vertical: 0),
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: (_) => _commit(),
+                    ),
+                  )
+                : Text(
+                    _ctrl.text,
+                    style: TextStyle(
+                      fontSize: 22,
+                      color: widget.color,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
           ],
         ),
       ),
