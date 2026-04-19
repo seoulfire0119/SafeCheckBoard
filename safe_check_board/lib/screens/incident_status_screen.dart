@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import '../services/firebase_service.dart';
 
 // ── 세션 내 저장 상태 ────────────────────────────────────────
 Map<String, String> _savedIncident = {};
@@ -9,7 +11,8 @@ Map<String, String> _savedIncident = {};
 // ── 재난발생현황 화면 ──────────────────────────────────────────
 
 class IncidentStatusScreen extends StatefulWidget {
-  const IncidentStatusScreen({super.key});
+  final String? sessionCode;
+  const IncidentStatusScreen({super.key, this.sessionCode});
   @override
   State<IncidentStatusScreen> createState() => _IncidentStatusScreenState();
 }
@@ -60,63 +63,89 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
 
   int _parseInt(TextEditingController c) => int.tryParse(c.text) ?? 0;
 
+  Timer? _saveDebounce;
+
+  void _scheduleSave() {
+    if (widget.sessionCode == null) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 1500), () {
+      FirebaseService.instance.saveIncident(widget.sessionCode!, _collectData());
+    });
+  }
+
+  Map<String, String> _collectData() => {
+    'date': _date.text, 'location': _location.text,
+    'target': _target.text, 'floors': _floors.text,
+    'area': _area.text, 'cause': _cause.text,
+    'dead': _dead.text, 'injured': _injured.text,
+    'propReal': _propReal.text, 'propMove': _propMove.text,
+    'pFire': _pFire.text, 'pDistrict': _pDistrict.text,
+    'pPolice': _pPolice.text, 'pElec': _pElec.text,
+    'pGas': _pGas.text, 'pOther': _pOther.text,
+    'eFire': _eFire.text, 'eDistrict': _eDistrict.text,
+    'ePolice': _ePolice.text, 'eElec': _eElec.text,
+    'eGas': _eGas.text, 'eOther': _eOther.text,
+    'activities': _activities.text,
+  };
+
+  void _applyData(Map<String, String> s) {
+    _date.text       = s['date']       ?? '';
+    _location.text   = s['location']   ?? '';
+    _target.text     = s['target']     ?? '';
+    _floors.text     = s['floors']     ?? '';
+    _area.text       = s['area']       ?? '';
+    _cause.text      = s['cause']      ?? '';
+    _dead.text       = s['dead']       ?? '0';
+    _injured.text    = s['injured']    ?? '0';
+    _propReal.text   = s['propReal']   ?? '0';
+    _propMove.text   = s['propMove']   ?? '0';
+    _pFire.text      = s['pFire']      ?? '0';
+    _pDistrict.text  = s['pDistrict']  ?? '0';
+    _pPolice.text    = s['pPolice']    ?? '0';
+    _pElec.text      = s['pElec']      ?? '0';
+    _pGas.text       = s['pGas']       ?? '0';
+    _pOther.text     = s['pOther']     ?? '0';
+    _eFire.text      = s['eFire']      ?? '0';
+    _eDistrict.text  = s['eDistrict']  ?? '0';
+    _ePolice.text    = s['ePolice']    ?? '0';
+    _eElec.text      = s['eElec']      ?? '0';
+    _eGas.text       = s['eGas']       ?? '0';
+    _eOther.text     = s['eOther']     ?? '0';
+    _activities.text = s['activities'] ?? '';
+  }
+
   @override
   void initState() {
     super.initState();
-    // 저장된 상태 복원
-    final s = _savedIncident;
-    if (s.isNotEmpty) {
-      _date.text      = s['date']      ?? '';
-      _location.text  = s['location']  ?? '';
-      _target.text    = s['target']    ?? '';
-      _floors.text    = s['floors']    ?? '';
-      _area.text      = s['area']      ?? '';
-      _cause.text     = s['cause']     ?? '';
-      _dead.text      = s['dead']      ?? '0';
-      _injured.text   = s['injured']   ?? '0';
-      _propReal.text  = s['propReal']  ?? '0';
-      _propMove.text  = s['propMove']  ?? '0';
-      _pFire.text     = s['pFire']     ?? '0';
-      _pDistrict.text = s['pDistrict'] ?? '0';
-      _pPolice.text   = s['pPolice']   ?? '0';
-      _pElec.text     = s['pElec']     ?? '0';
-      _pGas.text      = s['pGas']      ?? '0';
-      _pOther.text    = s['pOther']    ?? '0';
-      _eFire.text     = s['eFire']     ?? '0';
-      _eDistrict.text = s['eDistrict'] ?? '0';
-      _ePolice.text   = s['ePolice']   ?? '0';
-      _eElec.text     = s['eElec']     ?? '0';
-      _eGas.text      = s['eGas']      ?? '0';
-      _eOther.text    = s['eOther']    ?? '0';
-      _activities.text = s['activities'] ?? '';
+    // 로컬 캐시로 즉시 복원
+    if (_savedIncident.isNotEmpty) _applyData(_savedIncident);
+    // Firebase에서 최신 데이터 로드
+    if (widget.sessionCode != null) {
+      FirebaseService.instance.loadSecondaryData(widget.sessionCode!).then((data) {
+        if (!mounted || data == null) return;
+        final raw = data['incident'];
+        if (raw == null) return;
+        final s = Map<String, String>.from((raw as Map).map((k, v) => MapEntry(k.toString(), v.toString())));
+        setState(() => _applyData(s));
+      });
     }
-    // 합계 자동 갱신
+    // 합계 자동 갱신 + Firebase 저장 트리거
     for (final c in [
       _propReal, _propMove,
       _pFire, _pDistrict, _pPolice, _pElec, _pGas, _pOther,
       _eFire, _eDistrict, _ePolice, _eElec, _eGas, _eOther,
     ]) {
-      c.addListener(() => setState(() {}));
+      c.addListener(() { setState(() {}); _scheduleSave(); });
+    }
+    for (final c in [_date, _location, _target, _floors, _area, _cause, _dead, _injured, _activities]) {
+      c.addListener(_scheduleSave);
     }
   }
 
   @override
   void dispose() {
-    // 상태 저장
-    _savedIncident = {
-      'date': _date.text, 'location': _location.text,
-      'target': _target.text, 'floors': _floors.text,
-      'area': _area.text, 'cause': _cause.text,
-      'dead': _dead.text, 'injured': _injured.text,
-      'propReal': _propReal.text, 'propMove': _propMove.text,
-      'pFire': _pFire.text, 'pDistrict': _pDistrict.text,
-      'pPolice': _pPolice.text, 'pElec': _pElec.text,
-      'pGas': _pGas.text, 'pOther': _pOther.text,
-      'eFire': _eFire.text, 'eDistrict': _eDistrict.text,
-      'ePolice': _ePolice.text, 'eElec': _eElec.text,
-      'eGas': _eGas.text, 'eOther': _eOther.text,
-      'activities': _activities.text,
-    };
+    _saveDebounce?.cancel();
+    _savedIncident = _collectData();
     for (final c in [
       _date, _location, _target, _floors, _area, _cause,
       _dead, _injured, _propReal, _propMove,

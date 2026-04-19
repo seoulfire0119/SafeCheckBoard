@@ -219,4 +219,44 @@ class FirebaseService {
         ),
         time: DateTime.fromMillisecondsSinceEpoch(m['time'] as int),
       );
+
+  // ── 보조 화면 저장 ────────────────────────────────────────────
+
+  Future<void> saveIncident(String code, Map<String, String> data) async {
+    await _sessions.doc(code).update({
+      'incident': data,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> saveDisasterResponse(
+      String code,
+      List<Map<String, String>> actionRows,
+      List<Map<String, String>> agencyRows) async {
+    await _sessions.doc(code).update({
+      'disasterResponse': {'actionRows': actionRows, 'agencyRows': agencyRows},
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> saveCasualty(
+      String code, List<Map<String, String>> rows) async {
+    await _sessions.doc(code).update({
+      'casualty': {'rows': rows},
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ── 보조 화면 로드 ────────────────────────────────────────────
+
+  Future<Map<String, dynamic>?> loadSecondaryData(String code) async {
+    final doc = await _sessions.doc(code).get();
+    if (!doc.exists || doc.data() == null) return null;
+    final d = doc.data()!;
+    return {
+      'incident':        d['incident'],
+      'disasterResponse': d['disasterResponse'],
+      'casualty':        d['casualty'],
+    };
+  }
 }

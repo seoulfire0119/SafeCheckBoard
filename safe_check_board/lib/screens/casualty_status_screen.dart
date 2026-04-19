@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import '../services/firebase_service.dart';
 
 // ── 상태 옵션 ─────────────────────────────────────────────────
 
@@ -40,7 +42,8 @@ int _savedCasualtyPage = 0;
 // ── 인명피해상황 화면 ─────────────────────────────────────────
 
 class CasualtyStatusScreen extends StatefulWidget {
-  const CasualtyStatusScreen({super.key});
+  final String? sessionCode;
+  const CasualtyStatusScreen({super.key, this.sessionCode});
   @override
   State<CasualtyStatusScreen> createState() => _CasualtyStatusScreenState();
 }
@@ -51,6 +54,7 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
   int _currentPage = 0;
 
   final List<_CasualtyRow> _casualtyRows = [];
+  Timer? _saveDebounce;
 
   int get _totalPages => ((_casualtyRows.length - 1) ~/ _pageSize) + 1;
   List<_CasualtyRow> get _pageRows {
@@ -67,43 +71,78 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
   int get _otherCount      => _count('기타');
   int get _totalCount      => _deadCount + _injuredCount;
 
+  void _scheduleSave() {
+    if (widget.sessionCode == null) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 1500), () {
+      FirebaseService.instance.saveCasualty(widget.sessionCode!, _collectRows());
+    });
+  }
+
+  List<Map<String, String>> _collectRows() => _casualtyRows.map((r) => {
+    'status': r.status, 'name': r.nameCtrl.text,
+    'gender': r.genderCtrl.text, 'age': r.ageCtrl.text,
+    'found': r.foundCtrl.text, 'ambul': r.ambulCtrl.text,
+    'hospital': r.hospitalCtrl.text, 'injury': r.injuryCtrl.text,
+    'etc': r.etcCtrl.text,
+  }).toList();
+
+  void _addRowListeners(_CasualtyRow r) {
+    for (final c in [r.nameCtrl, r.genderCtrl, r.ageCtrl, r.foundCtrl, r.ambulCtrl, r.hospitalCtrl, r.injuryCtrl, r.etcCtrl]) {
+      c.addListener(_scheduleSave);
+    }
+  }
+
+  void _applyRows(List<Map<String, String>> list) {
+    for (final r in _casualtyRows) r.dispose();
+    _casualtyRows.clear();
+    if (list.isEmpty) {
+      for (int i = 0; i < 10; i++) { final r = _CasualtyRow(i + 1); _addRowListeners(r); _casualtyRows.add(r); }
+      return;
+    }
+    for (int i = 0; i < list.length; i++) {
+      final m = list[i];
+      final r = _CasualtyRow(i + 1);
+      r.status            = m['status']   ?? '';
+      r.nameCtrl.text     = m['name']     ?? '';
+      r.genderCtrl.text   = m['gender']   ?? '';
+      r.ageCtrl.text      = m['age']      ?? '';
+      r.foundCtrl.text    = m['found']    ?? '';
+      r.ambulCtrl.text    = m['ambul']    ?? '';
+      r.hospitalCtrl.text = m['hospital'] ?? '';
+      r.injuryCtrl.text   = m['injury']   ?? '';
+      r.etcCtrl.text      = m['etc']      ?? '';
+      _addRowListeners(r);
+      _casualtyRows.add(r);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    // 로컬 캐시로 즉시 복원
+    _applyRows(_savedCasualtyRows);
     if (_savedCasualtyRows.isNotEmpty) {
-      for (int i = 0; i < _savedCasualtyRows.length; i++) {
-        final m = _savedCasualtyRows[i];
-        final r = _CasualtyRow(i + 1);
-        r.status          = m['status']   ?? '';
-        r.nameCtrl.text   = m['name']     ?? '';
-        r.genderCtrl.text = m['gender']   ?? '';
-        r.ageCtrl.text    = m['age']      ?? '';
-        r.foundCtrl.text  = m['found']    ?? '';
-        r.ambulCtrl.text  = m['ambul']    ?? '';
-        r.hospitalCtrl.text = m['hospital'] ?? '';
-        r.injuryCtrl.text = m['injury']   ?? '';
-        r.etcCtrl.text    = m['etc']      ?? '';
-        _casualtyRows.add(r);
-      }
       _currentPage = _savedCasualtyPage.clamp(0, _totalPages - 1);
-    } else {
-      for (int i = 0; i < 10; i++) _casualtyRows.add(_CasualtyRow(i + 1));
+    }
+    // Firebase에서 최신 데이터 로드
+    if (widget.sessionCode != null) {
+      FirebaseService.instance.loadSecondaryData(widget.sessionCode!).then((data) {
+        if (!mounted || data == null) return;
+        final raw = data['casualty'];
+        if (raw == null) return;
+        final rows = ((raw['rows'] as List?) ?? [])
+            .map((m) => Map<String, String>.from((m as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList();
+        setState(() { _applyRows(rows); _currentPage = 0; });
+      });
     }
   }
 
   @override
   void dispose() {
-    _savedCasualtyRows = _casualtyRows.map((r) => {
-      'status':   r.status,
-      'name':     r.nameCtrl.text,
-      'gender':   r.genderCtrl.text,
-      'age':      r.ageCtrl.text,
-      'found':    r.foundCtrl.text,
-      'ambul':    r.ambulCtrl.text,
-      'hospital': r.hospitalCtrl.text,
-      'injury':   r.injuryCtrl.text,
-      'etc':      r.etcCtrl.text,
-    }).toList();
+    _saveDebounce?.cancel();
+    _savedCasualtyRows = _collectRows();
     _savedCasualtyPage = _currentPage;
     for (final r in _casualtyRows) r.dispose();
     super.dispose();
@@ -247,7 +286,7 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
             ),
           )),
         ],
-        onChanged: (v) => setState(() => row.status = v ?? ''),
+        onChanged: (v) { setState(() => row.status = v ?? ''); _scheduleSave(); },
       ),
     );
   }
@@ -417,14 +456,13 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
                             _cell(r.etcCtrl, '비고', width: 90),
                             IconButton(
                               icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.red),
-                              onPressed: () => setState(() {
+                              onPressed: () { setState(() {
                                 _casualtyRows[globalIdx].dispose();
                                 _casualtyRows.removeAt(globalIdx);
-                                // 삭제 후 페이지 범위 보정
                                 if (_currentPage >= _totalPages) {
                                   _currentPage = (_totalPages - 1).clamp(0, 999);
                                 }
-                              }),
+                              }); _scheduleSave(); },
                               padding: const EdgeInsets.only(left: 4),
                               constraints: const BoxConstraints(minWidth: 32),
                             ),
@@ -437,11 +475,7 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
                   // ── 페이지 네비게이터 + 행 추가 ──
                   Row(children: [
                     TextButton.icon(
-                      onPressed: () => setState(() {
-                        _casualtyRows.add(_CasualtyRow(_casualtyRows.length + 1));
-                        // 새 행이 추가된 페이지로 이동
-                        _currentPage = _totalPages - 1;
-                      }),
+                      onPressed: () { final r = _CasualtyRow(_casualtyRows.length + 1); _addRowListeners(r); setState(() { _casualtyRows.add(r); _currentPage = _totalPages - 1; }); _scheduleSave(); },
                       icon: const Icon(Icons.add, size: 16),
                       label: const Text('행 추가'),
                     ),

@@ -791,15 +791,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 break;
               case 'incident':
                 Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const IncidentStatusScreen()));
+                    MaterialPageRoute(builder: (_) => IncidentStatusScreen(sessionCode: widget.sessionCode)));
                 break;
               case 'response':
                 Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const DisasterResponseScreen()));
+                    MaterialPageRoute(builder: (_) => DisasterResponseScreen(sessionCode: widget.sessionCode)));
                 break;
               case 'casualty':
                 Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const CasualtyStatusScreen()));
+                    MaterialPageRoute(builder: (_) => CasualtyStatusScreen(sessionCode: widget.sessionCode)));
                 break;
             }
           },

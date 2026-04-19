@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import '../services/firebase_service.dart';
 
 // ── 데이터 모델 ──────────────────────────────────────────────
 
@@ -28,7 +30,8 @@ List<Map<String, String>> _savedAgencyRows = [];
 // ── 재난대응활동 + 유관기관 활동사항 화면 ──────────────────────
 
 class DisasterResponseScreen extends StatefulWidget {
-  const DisasterResponseScreen({super.key});
+  final String? sessionCode;
+  const DisasterResponseScreen({super.key, this.sessionCode});
   @override
   State<DisasterResponseScreen> createState() => _DisasterResponseScreenState();
 }
@@ -37,44 +40,98 @@ class _DisasterResponseScreenState extends State<DisasterResponseScreen> {
 
   final List<_ActionRow> _actionRows = [];
   final List<_AgencyRow> _agencyRows = [];
+  Timer? _saveDebounce;
+
+  void _scheduleSave() {
+    if (widget.sessionCode == null) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 1500), () {
+      FirebaseService.instance.saveDisasterResponse(
+        widget.sessionCode!,
+        _actionRows.map((r) => {'time': r.timeCtrl.text, 'content': r.contentCtrl.text}).toList(),
+        _agencyRows.map((r) => {'agency': r.agencyCtrl.text, 'person': r.personCtrl.text, 'arrive': r.arriveCtrl.text, 'action': r.actionCtrl.text}).toList(),
+      );
+    });
+  }
+
+  void _addListeners(_ActionRow r) {
+    r.timeCtrl.addListener(_scheduleSave);
+    r.contentCtrl.addListener(_scheduleSave);
+  }
+
+  void _addAgencyListeners(_AgencyRow r) {
+    r.agencyCtrl.addListener(_scheduleSave);
+    r.personCtrl.addListener(_scheduleSave);
+    r.arriveCtrl.addListener(_scheduleSave);
+    r.actionCtrl.addListener(_scheduleSave);
+  }
+
+  void _applyActionRows(List<Map<String, String>> list) {
+    for (final r in _actionRows) r.dispose();
+    _actionRows.clear();
+    if (list.isEmpty) {
+      for (int i = 0; i < 10; i++) { final r = _ActionRow(); _addListeners(r); _actionRows.add(r); }
+      return;
+    }
+    for (final m in list) {
+      final r = _ActionRow();
+      r.timeCtrl.text    = m['time']    ?? '';
+      r.contentCtrl.text = m['content'] ?? '';
+      _addListeners(r);
+      _actionRows.add(r);
+    }
+  }
+
+  void _applyAgencyRows(List<Map<String, String>> list) {
+    for (final r in _agencyRows) r.dispose();
+    _agencyRows.clear();
+    if (list.isEmpty) {
+      for (int i = 0; i < 10; i++) { final r = _AgencyRow(i + 1); _addAgencyListeners(r); _agencyRows.add(r); }
+      return;
+    }
+    for (int i = 0; i < list.length; i++) {
+      final m = list[i];
+      final r = _AgencyRow(i + 1);
+      r.agencyCtrl.text  = m['agency']  ?? '';
+      r.personCtrl.text  = m['person']  ?? '';
+      r.arriveCtrl.text  = m['arrive']  ?? '';
+      r.actionCtrl.text  = m['action']  ?? '';
+      _addAgencyListeners(r);
+      _agencyRows.add(r);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    if (_savedActionRows.isNotEmpty) {
-      for (final m in _savedActionRows) {
-        final r = _ActionRow();
-        r.timeCtrl.text    = m['time']    ?? '';
-        r.contentCtrl.text = m['content'] ?? '';
-        _actionRows.add(r);
-      }
-    } else {
-      for (int i = 0; i < 10; i++) _actionRows.add(_ActionRow());
-    }
-    if (_savedAgencyRows.isNotEmpty) {
-      for (int i = 0; i < _savedAgencyRows.length; i++) {
-        final m = _savedAgencyRows[i];
-        final r = _AgencyRow(i + 1);
-        r.agencyCtrl.text  = m['agency']  ?? '';
-        r.personCtrl.text  = m['person']  ?? '';
-        r.arriveCtrl.text  = m['arrive']  ?? '';
-        r.actionCtrl.text  = m['action']  ?? '';
-        _agencyRows.add(r);
-      }
-    } else {
-      for (int i = 0; i < 10; i++) _agencyRows.add(_AgencyRow(i + 1));
+    // 로컬 캐시로 즉시 복원
+    _applyActionRows(_savedActionRows);
+    _applyAgencyRows(_savedAgencyRows);
+    // Firebase에서 최신 데이터 로드
+    if (widget.sessionCode != null) {
+      FirebaseService.instance.loadSecondaryData(widget.sessionCode!).then((data) {
+        if (!mounted || data == null) return;
+        final raw = data['disasterResponse'];
+        if (raw == null) return;
+        final actionList = ((raw['actionRows'] as List?) ?? [])
+            .map((m) => Map<String, String>.from((m as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList();
+        final agencyList = ((raw['agencyRows'] as List?) ?? [])
+            .map((m) => Map<String, String>.from((m as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList();
+        setState(() {
+          _applyActionRows(actionList);
+          _applyAgencyRows(agencyList);
+        });
+      });
     }
   }
 
   @override
   void dispose() {
-    _savedActionRows = _actionRows.map((r) => {
-      'time': r.timeCtrl.text, 'content': r.contentCtrl.text,
-    }).toList();
-    _savedAgencyRows = _agencyRows.map((r) => {
-      'agency': r.agencyCtrl.text, 'person': r.personCtrl.text,
-      'arrive': r.arriveCtrl.text, 'action': r.actionCtrl.text,
-    }).toList();
+    _saveDebounce?.cancel();
+    _savedActionRows = _actionRows.map((r) => {'time': r.timeCtrl.text, 'content': r.contentCtrl.text}).toList();
+    _savedAgencyRows = _agencyRows.map((r) => {'agency': r.agencyCtrl.text, 'person': r.personCtrl.text, 'arrive': r.arriveCtrl.text, 'action': r.actionCtrl.text}).toList();
     for (final r in _actionRows) r.dispose();
     for (final r in _agencyRows) r.dispose();
     super.dispose();
@@ -246,7 +303,7 @@ ${_agencyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_e
                       if (_actionRows.length > 10)
                         IconButton(
                           icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.red),
-                          onPressed: () => setState(() { _actionRows[e.key].dispose(); _actionRows.removeAt(e.key); }),
+                          onPressed: () { setState(() { _actionRows[e.key].dispose(); _actionRows.removeAt(e.key); }); _scheduleSave(); },
                           padding: const EdgeInsets.only(left: 4),
                           constraints: const BoxConstraints(minWidth: 32),
                         ),
@@ -255,7 +312,7 @@ ${_agencyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_e
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
-                      onPressed: () => setState(() => _actionRows.add(_ActionRow())),
+                      onPressed: () { final r = _ActionRow(); _addListeners(r); setState(() => _actionRows.add(r)); _scheduleSave(); },
                       icon: const Icon(Icons.add, size: 16),
                       label: const Text('행 추가'),
                     ),
@@ -304,7 +361,7 @@ ${_agencyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_e
                         if (_agencyRows.length > 10)
                           IconButton(
                             icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.red),
-                            onPressed: () => setState(() { _agencyRows[e.key].dispose(); _agencyRows.removeAt(e.key); }),
+                            onPressed: () { setState(() { _agencyRows[e.key].dispose(); _agencyRows.removeAt(e.key); }); _scheduleSave(); },
                             padding: const EdgeInsets.only(left: 4),
                             constraints: const BoxConstraints(minWidth: 32),
                           ),
@@ -314,7 +371,7 @@ ${_agencyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_e
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
-                      onPressed: () => setState(() => _agencyRows.add(_AgencyRow(_agencyRows.length + 1))),
+                      onPressed: () { final r = _AgencyRow(_agencyRows.length + 1); _addAgencyListeners(r); setState(() => _agencyRows.add(r)); _scheduleSave(); },
                       icon: const Icon(Icons.add, size: 16),
                       label: const Text('행 추가'),
                     ),
