@@ -1,21 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/status.dart';
-
-class LogEntry {
-  final DateTime timestamp;
-  final String unitName;
-  final UnitStatus fromStatus;
-  final UnitStatus toStatus;
-  final String? memo;
-
-  LogEntry({
-    required this.timestamp,
-    required this.unitName,
-    required this.fromStatus,
-    required this.toStatus,
-    this.memo,
-  });
-}
+import '../../models/log_entry.dart';
 
 class ActivityLog extends StatelessWidget {
   final List<LogEntry> entries;
@@ -30,7 +15,7 @@ class ActivityLog extends StatelessWidget {
           padding: EdgeInsets.all(16),
           child: Text(
             '활동 기록이 없습니다',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
         ),
       );
@@ -42,8 +27,9 @@ class ActivityLog extends StatelessWidget {
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
+        final t = entry.time;
         final time =
-            '${entry.timestamp.hour.toString().padLeft(2, '0')}:${entry.timestamp.minute.toString().padLeft(2, '0')}:${entry.timestamp.second.toString().padLeft(2, '0')}';
+            '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
@@ -53,26 +39,26 @@ class ActivityLog extends StatelessWidget {
               Text(
                 time,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   color: Colors.grey.shade600,
                   fontFamily: 'monospace',
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Container(
                 width: 8,
                 height: 8,
-                margin: const EdgeInsets.only(top: 4),
+                margin: const EdgeInsets.only(top: 3),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: entry.toStatus.color,
+                  color: entry.to.color,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '${entry.unitName}: ${entry.fromStatus.label} → ${entry.toStatus.label}',
-                  style: const TextStyle(fontSize: 12),
+                  '${entry.unitName}: ${entry.from.label} → ${entry.to.label}',
+                  style: const TextStyle(fontSize: 11),
                 ),
               ),
             ],
