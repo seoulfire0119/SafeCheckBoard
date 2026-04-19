@@ -20,7 +20,8 @@ class _LogEntry {
 
 class DisasterBriefingScreen extends StatefulWidget {
   final BriefingRecord? initialRecord;
-  const DisasterBriefingScreen({super.key, this.initialRecord});
+  final String? sessionCode;
+  const DisasterBriefingScreen({super.key, this.initialRecord, this.sessionCode});
 
   @override
   State<DisasterBriefingScreen> createState() =>
@@ -234,6 +235,7 @@ class _DisasterBriefingScreenState extends State<DisasterBriefingScreen>
       final now = DateTime.now();
       final rec = BriefingRecord(
         id: '',
+        sessionCode: widget.sessionCode ?? widget.initialRecord?.sessionCode ?? '__local__',
         title: title,
         tabType: _tab.index,
         createdAt: now,
@@ -247,6 +249,7 @@ class _DisasterBriefingScreenState extends State<DisasterBriefingScreen>
       final now = DateTime.now();
       final rec = BriefingRecord(
         id: _recordId!,
+        sessionCode: widget.sessionCode ?? widget.initialRecord?.sessionCode ?? '__local__',
         title: _recordTitle,
         tabType: _tab.index,
         createdAt: now,

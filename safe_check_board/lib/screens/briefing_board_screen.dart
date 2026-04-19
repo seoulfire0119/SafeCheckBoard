@@ -4,7 +4,8 @@ import '../services/briefing_service.dart';
 import 'disaster_briefing_screen.dart';
 
 class BriefingBoardScreen extends StatelessWidget {
-  const BriefingBoardScreen({super.key});
+  final String? sessionCode;
+  const BriefingBoardScreen({super.key, this.sessionCode});
 
   static const _tabNames = ['초동 브리핑', '중간 브리핑', '공식 보고서'];
   static const _tabColors = [
@@ -30,7 +31,7 @@ class BriefingBoardScreen extends StatelessWidget {
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<List<BriefingRecord>>(
-        stream: BriefingService.stream(),
+        stream: BriefingService.stream(sessionCode ?? '__local__'),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -71,7 +72,10 @@ class BriefingBoardScreen extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => DisasterBriefingScreen(initialRecord: record),
+        builder: (_) => DisasterBriefingScreen(
+          initialRecord: record,
+          sessionCode: sessionCode,
+        ),
       ),
     );
   }

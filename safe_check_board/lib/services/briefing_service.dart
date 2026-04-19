@@ -5,8 +5,9 @@ class BriefingService {
   static final _col =
       FirebaseFirestore.instance.collection('briefings');
 
-  static Stream<List<BriefingRecord>> stream() {
+  static Stream<List<BriefingRecord>> stream(String sessionCode) {
     return _col
+        .where('sessionCode', isEqualTo: sessionCode)
         .orderBy('updatedAt', descending: true)
         .snapshots()
         .map((snap) => snap.docs

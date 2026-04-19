@@ -783,11 +783,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 break;
               case 'briefing':
                 Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const DisasterBriefingScreen()));
+                    MaterialPageRoute(builder: (_) => DisasterBriefingScreen(sessionCode: widget.sessionCode)));
                 break;
               case 'board':
                 Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const BriefingBoardScreen()));
+                    MaterialPageRoute(builder: (_) => BriefingBoardScreen(sessionCode: widget.sessionCode)));
                 break;
               case 'incident':
                 Navigator.push(context,
