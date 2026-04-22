@@ -5,7 +5,8 @@ import 'disaster_briefing_screen.dart';
 
 class BriefingBoardScreen extends StatelessWidget {
   final String? sessionCode;
-  const BriefingBoardScreen({super.key, this.sessionCode});
+  final VoidCallback? onClose;
+  const BriefingBoardScreen({super.key, this.sessionCode, this.onClose});
 
   static const _tabNames = ['초동 브리핑', '중간 브리핑', '공식 보고서'];
   static const _tabColors = [

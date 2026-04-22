@@ -60,6 +60,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // 인라인 패널 표시 여부
   bool _showMapColumn = false;
   bool _showCasualtyColumn = false;
+  bool _showRightPanel = true;
+
+  // 비모달 플로팅 창 (key → OverlayEntry)
+  final Map<String, OverlayEntry> _overlays = {};
 
   // 패널 너비/높이 (드래그 조절)
   double _buildingsW = 480.0;
@@ -103,9 +107,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    for (final e in _overlays.values) { e.remove(); }
+    _overlays.clear();
     _firestoreSub?.cancel();
     _saveDebounce?.cancel();
     super.dispose();
+  }
+
+  void _openOverlay({
+    required String key,
+    required Widget child,
+    required String title,
+    required Color titleColor,
+    required IconData icon,
+    double width = 1000,
+    double height = 700,
+  }) {
+    if (_overlays.containsKey(key)) return;
+    final entry = OverlayEntry(
+      builder: (_) => _DraggableWindowOverlay(
+        title: title,
+        titleColor: titleColor,
+        icon: icon,
+        width: width,
+        height: height,
+        onClose: () => _closeOverlay(key),
+        child: child,
+      ),
+    );
+    _overlays[key] = entry;
+    Overlay.of(context).insert(entry);
+  }
+
+  void _closeOverlay(String key) {
+    _overlays[key]?.remove();
+    _overlays[key]?.dispose();
+    _overlays.remove(key);
   }
 
   // ── Firebase 원격 업데이트 수신 ────────────────────────────────
@@ -853,6 +890,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: const Color(0xFFBF360C),
       foregroundColor: Colors.white,
       actions: [
+        if (MediaQuery.of(context).size.width > 800)
+          IconButton(
+            icon: Icon(
+              _showRightPanel ? Icons.view_sidebar : Icons.view_sidebar_outlined,
+              color: Colors.white,
+              size: 22,
+            ),
+            tooltip: _showRightPanel ? '오른쪽 패널 숨기기' : '오른쪽 패널 보기',
+            onPressed: () => setState(() => _showRightPanel = !_showRightPanel),
+          ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.menu, color: Colors.white, size: 22),
           tooltip: '메뉴',
@@ -865,32 +912,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 setState(() => _currentTab = _currentTab == 1 ? 0 : 1);
                 break;
               case 'map':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const OperationMapScreen()));
+                _openOverlay(
+                  key: 'map',
+                  child: OperationMapScreen(onClose: () => _closeOverlay('map')),
+                  title: '진압작전도', titleColor: const Color(0xFFBF360C),
+                  icon: Icons.map_outlined, width: 1020, height: 720,
+                );
                 break;
               case 'briefing':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => DisasterBriefingScreen(sessionCode: widget.sessionCode)));
+                _openOverlay(
+                  key: 'briefing',
+                  child: DisasterBriefingScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('briefing')),
+                  title: '재난대응 브리핑 자료', titleColor: const Color(0xFF0D1B2A),
+                  icon: Icons.description_outlined, width: 960,
+                );
                 break;
               case 'board':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => BriefingBoardScreen(sessionCode: widget.sessionCode)));
+                _openOverlay(
+                  key: 'board',
+                  child: BriefingBoardScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('board')),
+                  title: '브리핑 게시판', titleColor: const Color(0xFF0D1B2A),
+                  icon: Icons.dashboard_outlined, width: 960,
+                );
                 break;
               case 'incident':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => IncidentStatusScreen(sessionCode: widget.sessionCode)));
+                _openOverlay(
+                  key: 'incident',
+                  child: IncidentStatusScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('incident')),
+                  title: '재난발생현황', titleColor: const Color(0xFFBF360C),
+                  icon: Icons.info_outline, width: 760,
+                );
                 break;
               case 'timeline':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => TimelineActionScreen(sessionCode: widget.sessionCode)));
+                _openOverlay(
+                  key: 'timeline',
+                  child: TimelineActionScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('timeline')),
+                  title: '시간대별 조치현황', titleColor: const Color(0xFF0D47A1),
+                  icon: Icons.access_time_filled, width: 780,
+                );
                 break;
               case 'response':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => DisasterResponseScreen(sessionCode: widget.sessionCode)));
+                _openOverlay(
+                  key: 'response',
+                  child: DisasterResponseScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('response')),
+                  title: '유관기관 활동사항', titleColor: const Color(0xFF4A148C),
+                  icon: Icons.groups_outlined,
+                );
                 break;
               case 'casualty':
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => CasualtyStatusScreen(sessionCode: widget.sessionCode)));
+                _openOverlay(
+                  key: 'casualty',
+                  child: CasualtyStatusScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('casualty')),
+                  title: '인명피해상황', titleColor: const Color(0xFFB71C1C),
+                  icon: Icons.personal_injury_outlined,
+                );
                 break;
             }
           },
@@ -1045,8 +1120,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : _buildActionPanel(),
     );
 
-    final hasSidePanel = _showMapColumn || _showCasualtyColumn;
-
     // 건물+버튼 스크롤 행
     final buildingRow = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1054,48 +1127,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ...List.generate(_buildings.length, (i) => _buildBuildingColumn(i)),
-          if (_buildings.length < 3) _buildAddButton(),
-          if (!_showMapColumn) _buildMapAddButton(),
-          if (!_showCasualtyColumn) _buildCasualtyAddButton(),
+          _buildMapAddButton(),
+          _buildCasualtyAddButton(),
         ],
       ),
     );
 
-    // 사이드 패널 없음: 건물 영역 Expanded
-    if (!hasSidePanel) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: buildingRow),
-          rightPanel,
-        ],
-      );
-    }
-
-    // 사이드 패널 있음: 명시적 너비 + 리사이즈 핸들
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: _buildingsW, child: buildingRow),
-        _PanelResizeHandle(
-          onDrag: (dx) => setState(() =>
-              _buildingsW = (_buildingsW + dx).clamp(_panelMinW, 900.0)),
-        ),
-        if (_showMapColumn) ...[
-          SizedBox(width: _mapW, child: _buildMapColumn()),
-          _PanelResizeHandle(
-            onDrag: (dx) => setState(() =>
-                _mapW = (_mapW + dx).clamp(_panelMinW, 900.0)),
-          ),
-        ],
-        if (_showCasualtyColumn) ...[
-          SizedBox(width: _casualtyW, child: _buildCasualtyColumn()),
-          _PanelResizeHandle(
-            onDrag: (dx) => setState(() =>
-                _casualtyW = (_casualtyW + dx).clamp(_panelMinW, 900.0)),
-          ),
-        ],
-        rightPanel,
+        Expanded(child: buildingRow),
+        if (_showRightPanel) rightPanel,
       ],
     );
   }
@@ -1113,13 +1155,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ...List.generate(_buildings.length, (i) => _buildBuildingColumn(i)),
-          if (_buildings.length < 3) _buildAddButton(),
-          if (!_showMapColumn) _buildMapAddButton(),
-          if (!_showCasualtyColumn) _buildCasualtyAddButton(),
-          if (_showMapColumn)
-            SizedBox(width: 480, child: _buildMapColumn()),
-          if (_showCasualtyColumn)
-            SizedBox(width: 400, child: _buildCasualtyColumn()),
+          _buildMapAddButton(),
+          _buildCasualtyAddButton(),
         ],
       ),
     );
@@ -1237,27 +1274,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Expanded(
             child: Text(
               building.name,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
             ),
           ),
-          // 층 수 정보
           Text(
             '${building.floors.length}층',
             style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
           ),
-          const SizedBox(width: 6),
+          // 건물 추가 버튼 (마지막 건물 & 최대 3개 미만)
+          if (idx == _buildings.length - 1 && _buildings.length < 3) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: _showAddBuildingDialog,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.deepOrange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.deepOrange.shade200),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 11, color: Colors.deepOrange.shade600),
+                  const SizedBox(width: 2),
+                  Text('건물 추가',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.deepOrange.shade600,
+                          fontWeight: FontWeight.bold)),
+                ]),
+              ),
+            ),
+          ],
+          const SizedBox(width: 4),
           // X 버튼 (건물 제거)
           if (_buildings.length > 1)
             GestureDetector(
               onTap: () => _removeBuilding(idx),
-              child: Icon(
-                Icons.close,
-                size: 16,
-                color: Colors.grey.shade500,
-              ),
+              child: Icon(Icons.close, size: 16, color: Colors.grey.shade500),
             ),
         ],
       ),
@@ -1297,7 +1350,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildMapAddButton() {
     return GestureDetector(
-      onTap: () => setState(() => _showMapColumn = true),
+      onTap: () => _openOverlay(
+        key: 'map',
+        child: OperationMapScreen(onClose: () => _closeOverlay('map')),
+        title: '진압작전도', titleColor: const Color(0xFFBF360C),
+        icon: Icons.map_outlined, width: 1020, height: 720,
+      ),
       child: Container(
         width: 80,
         margin: const EdgeInsets.all(4),
@@ -1332,7 +1390,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildCasualtyAddButton() {
     return GestureDetector(
-      onTap: () => setState(() => _showCasualtyColumn = true),
+      onTap: () => _openOverlay(
+        key: 'casualty',
+        child: CasualtyStatusScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('casualty')),
+        title: '인명피해상황', titleColor: const Color(0xFFB71C1C),
+        icon: Icons.personal_injury_outlined,
+      ),
       child: Container(
         width: 80,
         margin: const EdgeInsets.all(4),
@@ -1396,12 +1459,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       fontSize: 13, fontWeight: FontWeight.bold)),
               const Spacer(),
               InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => CasualtyStatusScreen(
-                          sessionCode: widget.sessionCode)),
-                ).then((_) => setState(() {})),
+                onTap: () => _openOverlay(
+                  key: 'casualty',
+                  child: CasualtyStatusScreen(sessionCode: widget.sessionCode, onClose: () => _closeOverlay('casualty')),
+                  title: '인명피해상황', titleColor: const Color(0xFFB71C1C),
+                  icon: Icons.personal_injury_outlined,
+                ),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
@@ -1483,16 +1546,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const Spacer(),
                       // 팝업 버튼
                       InkWell(
-                        onTap: () => showDialog(
-                          context: context,
-                          builder: (_) => Dialog(
-                            backgroundColor: Colors.transparent,
-                            insetPadding: const EdgeInsets.all(16),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: const OperationMapScreen(),
-                            ),
-                          ),
+                        onTap: () => _openOverlay(
+                          key: 'map',
+                          child: OperationMapScreen(onClose: () => _closeOverlay('map')),
+                          title: '진압작전도', titleColor: const Color(0xFFBF360C),
+                          icon: Icons.map_outlined, width: 1020, height: 720,
                         ),
                         borderRadius: BorderRadius.circular(4),
                         child: Padding(
@@ -1515,10 +1573,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(width: 4),
                       // 편집 버튼
                       InkWell(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const OperationMapScreen()),
+                        onTap: () => _openOverlay(
+                          key: 'map',
+                          child: OperationMapScreen(onClose: () => _closeOverlay('map')),
+                          title: '진압작전도', titleColor: const Color(0xFFBF360C),
+                          icon: Icons.map_outlined, width: 1020, height: 720,
                         ),
                         borderRadius: BorderRadius.circular(4),
                         child: Padding(
@@ -1663,9 +1722,12 @@ class _CasualtyDashboardPanelState extends State<CasualtyDashboardPanel> {
   static String _maskName(String s) {
     final name = s.trim();
     if (name.isEmpty) return '';
-    final runes = name.runes.toList();
+    final parenIdx = name.indexOf('(');
+    final namePart = parenIdx >= 0 ? name.substring(0, parenIdx) : name;
+    final nationalityPart = parenIdx >= 0 ? name.substring(parenIdx) : '';
+    final runes = namePart.runes.toList();
     if (runes.length <= 1) return name;
-    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1);
+    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1) + nationalityPart;
   }
 
   @override
@@ -2007,6 +2069,220 @@ class _PersonnelStatCellState extends State<_PersonnelStatCell> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── 범용 드래그 플로팅 창 (비모달 Overlay) ───────────────────────
+
+class _DraggableWindowOverlay extends StatefulWidget {
+  final String title;
+  final Color titleColor;
+  final IconData icon;
+  final double width;
+  final double height;
+  final Widget child;
+  final VoidCallback onClose;
+
+  const _DraggableWindowOverlay({
+    required this.title,
+    required this.titleColor,
+    required this.icon,
+    required this.width,
+    required this.height,
+    required this.child,
+    required this.onClose,
+  });
+
+  @override
+  State<_DraggableWindowOverlay> createState() => _DraggableWindowOverlayState();
+}
+
+class _DraggableWindowOverlayState extends State<_DraggableWindowOverlay> {
+  Offset? _pos; // null → 첫 빌드에서 우상단으로 초기화
+  late double _w;
+  late double _h;
+
+  static const double _minW = 360;
+  static const double _minH = 260;
+  static const double _edgeSize = 6.0;
+  static const double _cornerSize = 16.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _w = widget.width;
+    _h = widget.height;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.of(context).size;
+    // 첫 렌더링에서 우상단 위치로 초기화
+    _pos ??= Offset((screen.width - _w - 20).clamp(0.0, double.infinity), 40);
+    final dx = _pos!.dx.clamp(0.0, (screen.width - _w).clamp(0.0, double.infinity));
+    final dy = _pos!.dy.clamp(0.0, (screen.height - _h).clamp(0.0, double.infinity));
+
+    return Stack(
+      children: [
+        Positioned(
+          left: dx, top: dy, width: _w, height: _h,
+          child: Material(
+            elevation: 20,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.hardEdge,
+            child: Stack(
+              children: [
+                // ── 본문 ──
+                Column(
+                  children: [
+                    // 드래그 타이틀 바
+                    GestureDetector(
+                      onPanUpdate: (d) => setState(() =>
+                          _pos = Offset(_pos!.dx + d.delta.dx, _pos!.dy + d.delta.dy)),
+                      child: Container(
+                        height: 32,
+                        color: widget.titleColor,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.drag_indicator, size: 16, color: Colors.white38),
+                            const SizedBox(width: 6),
+                            Icon(widget.icon, size: 14, color: Colors.white60),
+                            const SizedBox(width: 6),
+                            Text(widget.title,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold)),
+                            const Spacer(),
+                            // 크기 축소
+                            InkWell(
+                              onTap: () => setState(() {
+                                _w = (_w - 120).clamp(_minW, screen.width);
+                                _h = (_h - 80).clamp(_minH, screen.height);
+                              }),
+                              borderRadius: BorderRadius.circular(4),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                                child: Icon(Icons.remove, size: 14, color: Colors.white70),
+                              ),
+                            ),
+                            // 크기 확대
+                            InkWell(
+                              onTap: () => setState(() {
+                                _w = (_w + 120).clamp(_minW, screen.width);
+                                _h = (_h + 80).clamp(_minH, screen.height);
+                              }),
+                              borderRadius: BorderRadius.circular(4),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                                child: Icon(Icons.add, size: 14, color: Colors.white70),
+                              ),
+                            ),
+                            Container(width: 1, height: 14, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 2)),
+                            // 닫기
+                            InkWell(
+                              onTap: widget.onClose,
+                              borderRadius: BorderRadius.circular(4),
+                              child: const Padding(
+                                padding: EdgeInsets.all(6),
+                                child: Icon(Icons.close, size: 14, color: Colors.white54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(child: widget.child),
+                  ],
+                ),
+
+                // ── 오른쪽 테두리 ──
+                Positioned(
+                  right: 0, top: _cornerSize, bottom: _cornerSize, width: _edgeSize,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeRight,
+                    child: GestureDetector(
+                      onPanUpdate: (d) => setState(() =>
+                          _w = (_w + d.delta.dx).clamp(_minW, screen.width)),
+                    ),
+                  ),
+                ),
+                // ── 아래쪽 테두리 ──
+                Positioned(
+                  bottom: 0, left: _cornerSize, right: _cornerSize, height: _edgeSize,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeDown,
+                    child: GestureDetector(
+                      onPanUpdate: (d) => setState(() =>
+                          _h = (_h + d.delta.dy).clamp(_minH, screen.height)),
+                    ),
+                  ),
+                ),
+                // ── 왼쪽 테두리 ──
+                Positioned(
+                  left: 0, top: _cornerSize, bottom: _cornerSize, width: _edgeSize,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeLeft,
+                    child: GestureDetector(
+                      onPanUpdate: (d) => setState(() {
+                        final newW = (_w - d.delta.dx).clamp(_minW, screen.width);
+                        _pos = Offset(_pos!.dx + (_w - newW), _pos!.dy);
+                        _w = newW;
+                      }),
+                    ),
+                  ),
+                ),
+
+                // ── 우하단 모서리 ──
+                Positioned(
+                  right: 0, bottom: 0,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeDownRight,
+                    child: GestureDetector(
+                      onPanUpdate: (d) => setState(() {
+                        _w = (_w + d.delta.dx).clamp(_minW, screen.width);
+                        _h = (_h + d.delta.dy).clamp(_minH, screen.height);
+                      }),
+                      child: Container(
+                        width: _cornerSize, height: _cornerSize,
+                        decoration: BoxDecoration(
+                          color: widget.titleColor.withOpacity(0.5),
+                          borderRadius: const BorderRadius.only(topLeft: Radius.circular(4)),
+                        ),
+                        child: const Icon(Icons.south_east, size: 10, color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── 좌하단 모서리 ──
+                Positioned(
+                  left: 0, bottom: 0,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeDownLeft,
+                    child: GestureDetector(
+                      onPanUpdate: (d) => setState(() {
+                        final newW = (_w - d.delta.dx).clamp(_minW, screen.width);
+                        _pos = Offset(_pos!.dx + (_w - newW), _pos!.dy);
+                        _w = newW;
+                        _h = (_h + d.delta.dy).clamp(_minH, screen.height);
+                      }),
+                      child: Container(
+                        width: _cornerSize, height: _cornerSize,
+                        decoration: BoxDecoration(
+                          color: widget.titleColor.withOpacity(0.5),
+                          borderRadius: const BorderRadius.only(topRight: Radius.circular(4)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

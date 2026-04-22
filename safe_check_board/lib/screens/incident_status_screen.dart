@@ -14,7 +14,8 @@ Map<String, String> savedIncident = {};
 
 class IncidentStatusScreen extends StatefulWidget {
   final String? sessionCode;
-  const IncidentStatusScreen({super.key, this.sessionCode});
+  final VoidCallback? onClose;
+  const IncidentStatusScreen({super.key, this.sessionCode, this.onClose});
   @override
   State<IncidentStatusScreen> createState() => _IncidentStatusScreenState();
 }
@@ -335,7 +336,7 @@ td { padding: 5px 8px; border: 1px solid #ccc; vertical-align: top; }
                     Expanded(
                       flex: 3,
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _subLabel('인원', autoNote: '유관기관 자동', trailing: '총 $_autoPersonTotal명'),
+                        _subLabel('인원', trailing: '총 $_autoPersonTotal명'),
                         const SizedBox(height: 6),
                         ...() {
                           final agencies = savedAgencyRows

@@ -43,7 +43,8 @@ int _savedCasualtyPage = 0;
 
 class CasualtyStatusScreen extends StatefulWidget {
   final String? sessionCode;
-  const CasualtyStatusScreen({super.key, this.sessionCode});
+  final VoidCallback? onClose;
+  const CasualtyStatusScreen({super.key, this.sessionCode, this.onClose});
   @override
   State<CasualtyStatusScreen> createState() => _CasualtyStatusScreenState();
 }
@@ -249,13 +250,16 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
 
   static final _colHeader = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600);
 
-  // 성명 마스킹: 성(첫 글자)만 표시, 나머지는 ● 처리
+  // 성명 마스킹: 성(첫 글자)만 표시, 나머지는 ● 처리 / 국적 괄호는 유지
   static String _maskName(String s) {
     final name = s.trim();
     if (name.isEmpty) return '';
-    final runes = name.runes.toList();
+    final parenIdx = name.indexOf('(');
+    final namePart = parenIdx >= 0 ? name.substring(0, parenIdx) : name;
+    final nationalityPart = parenIdx >= 0 ? name.substring(parenIdx) : '';
+    final runes = namePart.runes.toList();
     if (runes.length <= 1) return name;
-    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1);
+    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1) + nationalityPart;
   }
 
   Widget _cell(TextEditingController ctrl, String hint, {double? width}) {
@@ -539,9 +543,12 @@ class _MaskedNameFieldState extends State<_MaskedNameField> {
   static String _mask(String s) {
     final name = s.trim();
     if (name.isEmpty) return '';
-    final runes = name.runes.toList();
+    final parenIdx = name.indexOf('(');
+    final namePart = parenIdx >= 0 ? name.substring(0, parenIdx) : name;
+    final nationalityPart = parenIdx >= 0 ? name.substring(parenIdx) : '';
+    final runes = namePart.runes.toList();
     if (runes.length <= 1) return name;
-    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1);
+    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1) + nationalityPart;
   }
 
   @override

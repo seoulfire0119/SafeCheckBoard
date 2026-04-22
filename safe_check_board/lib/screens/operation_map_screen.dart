@@ -230,7 +230,7 @@ extension MapItemTypeX on MapItemType {
   }
 
   // ── 기본 셀 크기 ──
-  int get cellW => this == MapItemType.building ? 5 : 1;
+  int get cellW => this == MapItemType.building ? 3 : 1;
   int get cellH => this == MapItemType.building ? 5 : 1;
 }
 
@@ -289,7 +289,8 @@ int _savedMapCols = 48;
 int _savedMapRows = 36;
 
 class OperationMapScreen extends StatefulWidget {
-  const OperationMapScreen({super.key});
+  final VoidCallback? onClose;
+  const OperationMapScreen({super.key, this.onClose});
 
   @override
   State<OperationMapScreen> createState() => _OperationMapScreenState();

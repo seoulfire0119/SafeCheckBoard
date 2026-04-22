@@ -154,7 +154,8 @@ Widget _sectionCard({
 
 class TimelineActionScreen extends StatefulWidget {
   final String? sessionCode;
-  const TimelineActionScreen({super.key, this.sessionCode});
+  final VoidCallback? onClose;
+  const TimelineActionScreen({super.key, this.sessionCode, this.onClose});
   @override
   State<TimelineActionScreen> createState() => _TimelineActionScreenState();
 }
@@ -463,7 +464,8 @@ ${_rows.map((r) => '<tr${_highlightToHtml(r.highlightColor)}><td>${_esc(r.timeCt
 
 class DisasterResponseScreen extends StatefulWidget {
   final String? sessionCode;
-  const DisasterResponseScreen({super.key, this.sessionCode});
+  final VoidCallback? onClose;
+  const DisasterResponseScreen({super.key, this.sessionCode, this.onClose});
   @override
   State<DisasterResponseScreen> createState() => _DisasterResponseScreenState();
 }
@@ -604,7 +606,7 @@ td { padding: 5px 8px; border: 1px solid #ccc; vertical-align: top; }
 </head><body>
 <h1>유관기관 활동사항</h1>
 <table>
-<tr><th style="width:36px">연번</th><th style="width:90px">기관명</th><th style="width:80px">참석자</th><th style="width:80px">도착시간</th><th>조치내용</th></tr>
+<tr><th style="width:36px">연번</th><th style="width:90px">기관명</th><th style="width:80px">인원(명)</th><th style="width:80px">도착시간</th><th>조치내용</th></tr>
 ${_rows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_esc(r.agencyCtrl.text)}</td><td>${_esc(r.personCtrl.text)}</td><td>${_esc(r.arriveCtrl.text)}</td><td>${_esc(r.actionCtrl.text)}</td></tr>').join()}
 </table>
 </body></html>''');
@@ -671,7 +673,7 @@ ${_rows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_esc(r.a
                       _resizableHeader('기관명', _agencyW,
                           (dx) => setState(() => _agencyW = _clamp(_agencyW + dx))),
                       const SizedBox(width: 8),
-                      _resizableHeader('참석자', _personW,
+                      _resizableHeader('인원(명)', _personW,
                           (dx) => setState(() => _personW = _clamp(_personW + dx))),
                       const SizedBox(width: 8),
                       _resizableHeader('도착시간', _arriveW, null),
@@ -699,7 +701,23 @@ ${_rows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${_esc(r.a
                         const SizedBox(width: 8),
                         SizedBox(width: _agencyW, child: _cell(r.agencyCtrl, '기관명')),
                         const SizedBox(width: 8),
-                        SizedBox(width: _personW, child: _cell(r.personCtrl, '참석자')),
+                        SizedBox(
+                          width: _personW,
+                          child: TextField(
+                            controller: r.personCtrl,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            decoration: const InputDecoration(
+                              hintText: '0',
+                              hintStyle: TextStyle(fontSize: 10, color: Colors.black38),
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                              suffixText: '명',
+                            ),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         SizedBox(
                           width: _arriveW,

@@ -24,7 +24,8 @@ class _LogEntry {
 class DisasterBriefingScreen extends StatefulWidget {
   final BriefingRecord? initialRecord;
   final String? sessionCode;
-  const DisasterBriefingScreen({super.key, this.initialRecord, this.sessionCode});
+  final VoidCallback? onClose;
+  const DisasterBriefingScreen({super.key, this.initialRecord, this.sessionCode, this.onClose});
 
   @override
   State<DisasterBriefingScreen> createState() =>
