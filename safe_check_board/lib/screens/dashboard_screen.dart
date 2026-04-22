@@ -11,6 +11,7 @@ import '../models/log_entry.dart';
 import '../services/firebase_service.dart';
 import '../widgets/grid/building_grid.dart';
 import '../widgets/panel/action_panel.dart';
+import '../widgets/panel/chat_panel.dart';
 import '../widgets/timer/entry_timer_panel.dart';
 import 'building_setup_screen.dart';
 import 'session_screen.dart';
@@ -757,6 +758,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: const Color(0xFFFFF3E0),
       appBar: _buildAppBar(),
       body: isWide ? _buildWideLayout() : _buildNarrowLayout(),
+      floatingActionButton: (!isWide && widget.sessionCode != null)
+          ? FloatingActionButton(
+              onPressed: _showChatSheet,
+              backgroundColor: Colors.orange.shade600,
+              mini: true,
+              tooltip: '현장 채팅',
+              child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 20),
+            )
+          : null,
+    );
+  }
+
+  void _showChatSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: ChatPanel(sessionCode: widget.sessionCode!),
+      ),
     );
   }
 
