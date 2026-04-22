@@ -42,7 +42,7 @@ Widget _buildStatusGrid(
   bool? isVulnerable,
   VoidCallback? onVulnerableToggle,
 }) {
-  // 상태버튼 + 요구조자 버튼을 하나의 리스트로 합쳐 2열 배치
+  // 상태버튼 + 피난약자 버튼을 하나의 리스트로 합쳐 2열 배치
   final rows = <Widget>[];
 
   // 상태 버튼 위젯 목록
@@ -54,7 +54,7 @@ Widget _buildStatusGrid(
         enabled: enabled,
         onTap: enabled ? () => onChanged(s) : null,
       ),
-    // 요구조자 버튼 (상태버튼과 동일 스타일)
+    // 피난약자 버튼 (상태버튼과 동일 스타일)
     if (onVulnerableToggle != null)
       _VulnerableBtn(
         isActive: isVulnerable ?? false,
@@ -115,7 +115,7 @@ class _VulnerableBtn extends StatelessWidget {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  '요구조자',
+                  '피난약자',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.w600,

@@ -81,6 +81,20 @@ class FirebaseService {
     return _parseSession(doc.data()!);
   }
 
+  // ── 채팅 ─────────────────────────────────────────────────────────
+  CollectionReference<Map<String, dynamic>> _chat(String code) =>
+      _sessions.doc(code).collection('chat');
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> chatStream(String code) =>
+      _chat(code).orderBy('timestamp').limitToLast(100).snapshots();
+
+  Future<void> sendChatMessage(String code, String sender, String text) =>
+      _chat(code).add({
+        'sender': sender,
+        'text': text,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
   // ── 실시간 스트림 (서버 확정 데이터만) ──────────────────────────
   Stream<SessionData?> sessionStream(String code) {
     return _sessions

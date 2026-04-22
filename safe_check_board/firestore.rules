@@ -3,27 +3,58 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── 세션 문서 ─────────────────────────────────────────────
-    // 코드를 직접 알고 있는 경우에만 읽기/쓰기 허용
-    // list(전체 목록 조회)는 차단 → 다른 세션 열람 불가
+    // 코드를 직접 알고 있어야만 접근 가능 (list 차단 → 전체 목록 조회 불가)
     match /sessions/{code} {
       allow get:    if true;
       allow list:   if false;
+
       allow create: if request.resource.data.keys().hasAll(
                         ['createdAt', 'updatedAt', 'buildings', 'states', 'personnelStats', 'log']
-                    ) && request.resource.data.buildings.size() <= 3;
-      allow update: if resource.data != null;
-      allow delete: if false;  // 세션 삭제 금지
+                    )
+                    && request.resource.data.buildings.size() <= 3
+                    && request.resource.data.log.size() <= 200;
+
+      // 업데이트: 필수 구조 키 포함 + 데이터 크기 제한
+      allow update: if resource.data != null
+                    && request.resource.data.keys().hasAny(
+                        ['updatedAt', 'buildings', 'states', 'personnelStats', 'log',
+                         'incident', 'disasterResponse', 'casualty']
+                    )
+                    && request.resource.data.size() <= 50;
+
+      allow delete: if false;
+
+      // ── 채팅 서브컬렉션 ──
+      match /chat/{msgId} {
+        allow read:   if true;
+        allow create: if request.resource.data.keys().hasAll(['sender', 'text', 'timestamp'])
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() <= 500
+                      && request.resource.data.sender is string
+                      && request.resource.data.sender.size() <= 30;
+        allow update, delete: if false;
+      }
+
+      // ── 보조 데이터 서브컬렉션 (incident, disasterResponse, casualty 등) ──
+      match /secondary/{docId} {
+        allow read:  if true;
+        allow write: if resource == null || resource.data != null;
+      }
     }
 
     // ── 브리핑 문서 ───────────────────────────────────────────
-    // sessionCode 필드 필수 → 세션별 격리
+    // 목록 조회는 sessionCode 필터가 있어야만 허용
     match /briefings/{id} {
-      allow get, list: if true;
-      allow create:    if request.resource.data.keys().hasAll(
-                           ['sessionCode', 'title', 'tabType', 'createdAt', 'updatedAt', 'fields']
-                       );
-      allow update:    if resource.data != null;
-      allow delete:    if resource.data != null;
+      allow get:    if true;
+      allow list:   if request.query.filters.size() > 0;  // 반드시 필터 조건 포함
+      allow create: if request.resource.data.keys().hasAll(
+                        ['sessionCode', 'title', 'tabType', 'createdAt', 'updatedAt', 'fields']
+                    )
+                    && request.resource.data.sessionCode is string
+                    && request.resource.data.sessionCode.size() == 6;
+      allow update: if resource.data != null
+                    && request.resource.data.sessionCode == resource.data.sessionCode;
+      allow delete: if resource.data != null;
     }
 
     // ── 그 외 모든 경로 차단 ──────────────────────────────────

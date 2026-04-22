@@ -4,6 +4,7 @@ import '../../models/unit.dart';
 import '../../models/log_entry.dart';
 import 'activity_log.dart';
 import 'status_buttons.dart';
+import 'chat_panel.dart';
 
 class ActionPanel extends StatelessWidget {
   final Unit? selectedUnit;
@@ -20,6 +21,7 @@ class ActionPanel extends StatelessWidget {
   final bool isFloorHidden;
   final VoidCallback? onMergeRight;
   final VoidCallback? onSplitUnit;
+  final String? sessionCode;
 
   const ActionPanel({
     super.key,
@@ -37,6 +39,7 @@ class ActionPanel extends StatelessWidget {
     this.isFloorHidden = false,
     this.onMergeRight,
     this.onSplitUnit,
+    this.sessionCode,
   });
 
   bool get _hasSelection => selectedUnit != null || selectedFloorUnits != null;
@@ -115,13 +118,22 @@ class ActionPanel extends StatelessWidget {
                   _SectionLabel(label: '활동 로그 (${logEntries.length}건)'),
                   const SizedBox(height: 6),
                   SizedBox(
-                    height: 220,
+                    height: 180,
                     child: ActivityLog(entries: logEntries),
                   ),
                 ],
               ),
             ),
           ),
+
+          // 채팅창
+          if (sessionCode != null) ...[
+            const Divider(height: 1),
+            SizedBox(
+              height: 260,
+              child: ChatPanel(sessionCode: sessionCode!),
+            ),
+          ],
         ],
       ),
     );

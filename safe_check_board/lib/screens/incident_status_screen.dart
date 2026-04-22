@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 import '../services/firebase_service.dart';
+import 'casualty_status_screen.dart' show savedCasualtyRows;
+import 'disaster_response_screen.dart' show savedAgencyRows;
 
 // ── 세션 내 저장 상태 ────────────────────────────────────────
-Map<String, String> _savedIncident = {};
+Map<String, String> savedIncident = {};
 
 // ── 재난발생현황 화면 ──────────────────────────────────────────
 
@@ -27,19 +29,16 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
   final _area      = TextEditingController();
   final _cause     = TextEditingController();
 
-  // ── 피해상황 ──
-  final _dead      = TextEditingController(text: '0');
-  final _injured   = TextEditingController(text: '0');
+  // ── 피해상황 (사망/부상은 인명피해상황에서 자동계산) ──
   final _propReal  = TextEditingController(text: '0'); // 부동산
   final _propMove  = TextEditingController(text: '0'); // 동산
 
-  // ── 동원상황 — 인원 ──
-  final _pFire     = TextEditingController(text: '0');
-  final _pDistrict = TextEditingController(text: '0');
-  final _pPolice   = TextEditingController(text: '0');
-  final _pElec     = TextEditingController(text: '0');
-  final _pGas      = TextEditingController(text: '0');
-  final _pOther    = TextEditingController(text: '0');
+  // 사망/부상 자동계산
+  int get _deadCount => savedCasualtyRows.where((r) => r['status'] == '지연환자').length;
+  int get _injuredCount => savedCasualtyRows.where((r) => r['status'] != '지연환자' && (r['status'] ?? '').isNotEmpty).length;
+
+  // 인원 자동계산 (유관기관 활동사항에서)
+  int get _autoPersonTotal => savedAgencyRows.fold(0, (sum, r) => sum + (int.tryParse(r['person'] ?? '') ?? 0));
 
   // ── 동원상황 — 장비 ──
   final _eFire     = TextEditingController(text: '0');
@@ -54,9 +53,6 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
 
   // 합계 (자동계산)
   int get _propTotal => _parseInt(_propReal) + _parseInt(_propMove);
-  int get _personTotal =>
-      _parseInt(_pFire) + _parseInt(_pDistrict) + _parseInt(_pPolice) +
-      _parseInt(_pElec) + _parseInt(_pGas) + _parseInt(_pOther);
   int get _equipTotal =>
       _parseInt(_eFire) + _parseInt(_eDistrict) + _parseInt(_ePolice) +
       _parseInt(_eElec) + _parseInt(_eGas) + _parseInt(_eOther);
@@ -77,11 +73,9 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
     'date': _date.text, 'location': _location.text,
     'target': _target.text, 'floors': _floors.text,
     'area': _area.text, 'cause': _cause.text,
-    'dead': _dead.text, 'injured': _injured.text,
+    'dead': '$_deadCount', 'injured': '$_injuredCount',
     'propReal': _propReal.text, 'propMove': _propMove.text,
-    'pFire': _pFire.text, 'pDistrict': _pDistrict.text,
-    'pPolice': _pPolice.text, 'pElec': _pElec.text,
-    'pGas': _pGas.text, 'pOther': _pOther.text,
+    'personTotal': '$_autoPersonTotal',
     'eFire': _eFire.text, 'eDistrict': _eDistrict.text,
     'ePolice': _ePolice.text, 'eElec': _eElec.text,
     'eGas': _eGas.text, 'eOther': _eOther.text,
@@ -95,16 +89,8 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
     _floors.text     = s['floors']     ?? '';
     _area.text       = s['area']       ?? '';
     _cause.text      = s['cause']      ?? '';
-    _dead.text       = s['dead']       ?? '0';
-    _injured.text    = s['injured']    ?? '0';
     _propReal.text   = s['propReal']   ?? '0';
     _propMove.text   = s['propMove']   ?? '0';
-    _pFire.text      = s['pFire']      ?? '0';
-    _pDistrict.text  = s['pDistrict']  ?? '0';
-    _pPolice.text    = s['pPolice']    ?? '0';
-    _pElec.text      = s['pElec']      ?? '0';
-    _pGas.text       = s['pGas']       ?? '0';
-    _pOther.text     = s['pOther']     ?? '0';
     _eFire.text      = s['eFire']      ?? '0';
     _eDistrict.text  = s['eDistrict']  ?? '0';
     _ePolice.text    = s['ePolice']    ?? '0';
@@ -118,7 +104,7 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
   void initState() {
     super.initState();
     // 로컬 캐시로 즉시 복원
-    if (_savedIncident.isNotEmpty) _applyData(_savedIncident);
+    if (savedIncident.isNotEmpty) _applyData(savedIncident);
     // Firebase에서 최신 데이터 로드
     if (widget.sessionCode != null) {
       FirebaseService.instance.loadSecondaryData(widget.sessionCode!).then((data) {
@@ -132,12 +118,11 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
     // 합계 자동 갱신 + Firebase 저장 트리거
     for (final c in [
       _propReal, _propMove,
-      _pFire, _pDistrict, _pPolice, _pElec, _pGas, _pOther,
       _eFire, _eDistrict, _ePolice, _eElec, _eGas, _eOther,
     ]) {
       c.addListener(() { setState(() {}); _scheduleSave(); });
     }
-    for (final c in [_date, _location, _target, _floors, _area, _cause, _dead, _injured, _activities]) {
+    for (final c in [_date, _location, _target, _floors, _area, _cause, _activities]) {
       c.addListener(_scheduleSave);
     }
   }
@@ -145,11 +130,10 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
-    _savedIncident = _collectData();
+    savedIncident = _collectData();
     for (final c in [
       _date, _location, _target, _floors, _area, _cause,
-      _dead, _injured, _propReal, _propMove,
-      _pFire, _pDistrict, _pPolice, _pElec, _pGas, _pOther,
+      _propReal, _propMove,
       _eFire, _eDistrict, _ePolice, _eElec, _eGas, _eOther,
       _activities,
     ]) { c.dispose(); }
@@ -169,15 +153,18 @@ class _IncidentStatusScreenState extends State<IncidentStatusScreen> {
     b.writeln('원인: ${_cause.text}');
     b.writeln();
     b.writeln('[피해상황]');
-    b.writeln('인명피해: 사망 ${_dead.text}명 / 부상 ${_injured.text}명');
+    b.writeln('인명피해: 사망 ${_deadCount}명 / 부상 ${_injuredCount}명');
     b.writeln('재산피해: ${_commaNum(_propTotal)}천원');
     b.writeln('  부동산: ${_commaNum(_parseInt(_propReal))}천원');
     b.writeln('  동산:   ${_commaNum(_parseInt(_propMove))}천원');
     b.writeln();
     b.writeln('[동원상황]');
-    b.writeln('인원 총 ${_personTotal}명');
-    b.writeln('  소방 ${_pFire.text}명 / 구청 ${_pDistrict.text}명 / 경찰 ${_pPolice.text}명');
-    b.writeln('  한전 ${_pElec.text}명 / 가스 ${_pGas.text}명 / 기타 ${_pOther.text}명');
+    b.writeln('인원 총 ${_autoPersonTotal}명');
+    for (final r in savedAgencyRows) {
+      final agency = r['agency'] ?? '';
+      final person = r['person'] ?? '0';
+      if (agency.isNotEmpty) b.writeln('  $agency: $person명');
+    }
     b.writeln('장비 총 ${_equipTotal}대');
     b.writeln('  소방 ${_eFire.text}대 / 구청 ${_eDistrict.text}대 / 경찰 ${_ePolice.text}대');
     b.writeln('  한전 ${_eElec.text}대 / 가스 ${_eGas.text}대 / 기타 ${_eOther.text}대');
@@ -229,16 +216,15 @@ td { padding: 5px 8px; border: 1px solid #ccc; vertical-align: top; }
 </table>
 <h2>피해상황</h2>
 <table>
-  <tr><th>인명피해</th><td>사망 ${_esc(_dead.text)}명 &nbsp; 부상 ${_esc(_injured.text)}명</td></tr>
+  <tr><th>인명피해</th><td>사망 ${_deadCount}명 &nbsp; 부상 ${_injuredCount}명</td></tr>
   <tr><th>재산피해</th><td class="total">${_commaNum(_propTotal)}천원</td></tr>
   <tr><th>&nbsp;&nbsp;부동산</th><td>${_commaNum(_parseInt(_propReal))}천원</td></tr>
   <tr><th>&nbsp;&nbsp;동산</th><td>${_commaNum(_parseInt(_propMove))}천원</td></tr>
 </table>
 <h2>동원상황</h2>
 <table>
-  <tr><th>인원 합계</th><td class="total">${_personTotal}명</td></tr>
-  <tr><th>&nbsp;&nbsp;소방 / 구청 / 경찰</th><td>${_esc(_pFire.text)}명 &nbsp; ${_esc(_pDistrict.text)}명 &nbsp; ${_esc(_pPolice.text)}명</td></tr>
-  <tr><th>&nbsp;&nbsp;한전 / 가스 / 기타</th><td>${_esc(_pElec.text)}명 &nbsp; ${_esc(_pGas.text)}명 &nbsp; ${_esc(_pOther.text)}명</td></tr>
+  <tr><th>인원 합계</th><td class="total">${_autoPersonTotal}명</td></tr>
+  ${savedAgencyRows.where((r) => (r['agency'] ?? '').isNotEmpty).map((r) => '<tr><th>&nbsp;&nbsp;${_esc(r['agency']!)}</th><td>${_esc(r['person'] ?? '0')}명</td></tr>').join()}
   <tr><th>장비 합계</th><td class="total">${_equipTotal}대</td></tr>
   <tr><th>&nbsp;&nbsp;소방 / 구청 / 경찰</th><td>${_esc(_eFire.text)}대 &nbsp; ${_esc(_eDistrict.text)}대 &nbsp; ${_esc(_ePolice.text)}대</td></tr>
   <tr><th>&nbsp;&nbsp;한전 / 가스 / 기타</th><td>${_esc(_eElec.text)}대 &nbsp; ${_esc(_eGas.text)}대 &nbsp; ${_esc(_eOther.text)}대</td></tr>
@@ -272,93 +258,153 @@ td { padding: 5px 8px; border: 1px solid #ccc; vertical-align: top; }
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             children: [
+              // ── 발생개요 ──────────────────────────────────
               _section(
                 color: const Color(0xFF1565C0),
                 icon: Icons.info_outline,
                 title: '발생개요',
                 child: Column(children: [
-                  _field('일시', _date, hint: '예) 2026-04-19 14:32'),
-                  _field('장소', _location, hint: '예) 서울 마포구 ○○동 123'),
-                  _field('대상', _target, hint: '예) 주상복합 (지하2층~지상25층)'),
                   Row(children: [
-                    Expanded(child: _field('층수', _floors, hint: '예) 25', suffix: '층')),
-                    const SizedBox(width: 10),
-                    Expanded(child: _field('면적', _area, hint: '예) 4500', suffix: '㎡')),
+                    Expanded(flex: 2, child: _cf('일시', _date, hint: '2026-04-19 14:32')),
+                    const SizedBox(width: 8),
+                    Expanded(flex: 3, child: _cf('장소', _location, hint: '서울 마포구 ○○동 123')),
                   ]),
-                  _field('원인', _cause, hint: '예) 주방 조리 중 실화 (추정)'),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Expanded(flex: 3, child: _cf('대상', _target, hint: '주상복합 (지하2·지상25층)')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _cf('층수', _floors, hint: '25', suffix: '층')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _cf('면적', _area, hint: '4500', suffix: '㎡')),
+                  ]),
+                  const SizedBox(height: 6),
+                  _cf('원인', _cause, hint: '주방 조리 중 실화 (추정)'),
                 ]),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              // ── 피해상황 ──────────────────────────────────
               _section(
                 color: const Color(0xFF6A1B9A),
                 icon: Icons.warning_amber,
                 title: '피해상황',
-                child: Column(children: [
-                  // 인명피해
-                  _label('인명피해'),
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Expanded(child: _numField('사망', _dead, Colors.red.shade700, '명')),
-                    const SizedBox(width: 10),
-                    Expanded(child: _numField('부상', _injured, Colors.orange.shade700, '명')),
-                  ]),
-                  const SizedBox(height: 12),
-                  // 재산피해
-                  _label('재산피해'),
-                  const SizedBox(height: 6),
-                  _totalBox('합계 ${_commaNum(_propTotal)}천원'),
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Expanded(child: _numField('부동산', _propReal, Colors.brown.shade700, '천원')),
-                    const SizedBox(width: 10),
-                    Expanded(child: _numField('동산', _propMove, Colors.brown.shade400, '천원')),
-                  ]),
-                ]),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 인명피해 (자동)
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _subLabel('인명피해', autoNote: '인명피해상황 자동'),
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          Expanded(child: _inlineNum('사망', _deadCount, Colors.red.shade700, '명')),
+                          const SizedBox(width: 8),
+                          Expanded(child: _inlineNum('부상', _injuredCount, Colors.orange.shade700, '명')),
+                        ]),
+                      ]),
+                    ),
+                    const SizedBox(width: 16),
+                    Container(width: 1, height: 60, color: const Color(0xFFDDD8F0)),
+                    const SizedBox(width: 16),
+                    // 재산피해 (수동)
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _subLabel('재산피해', trailing: '합계 ${_commaNum(_propTotal)}천원'),
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          Expanded(child: _compactNumField('부동산', _propReal, '천원')),
+                          const SizedBox(width: 8),
+                          Expanded(child: _compactNumField('동산', _propMove, '천원')),
+                        ]),
+                      ]),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              // ── 동원상황 ──────────────────────────────────
               _section(
                 color: const Color(0xFF2E7D32),
                 icon: Icons.groups,
                 title: '동원상황',
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  _label('인원'),
-                  const SizedBox(height: 6),
-                  _totalBox('총 $_personTotal명'),
-                  const SizedBox(height: 6),
-                  _mobilRow(['소방', '구청', '경찰'], [_pFire, _pDistrict, _pPolice], '명'),
-                  const SizedBox(height: 6),
-                  _mobilRow(['한전', '가스', '기타'], [_pElec, _pGas, _pOther], '명'),
-                  const SizedBox(height: 14),
-                  _label('장비'),
-                  const SizedBox(height: 6),
-                  _totalBox('총 $_equipTotal대'),
-                  const SizedBox(height: 6),
-                  _mobilRow(['소방', '구청', '경찰'], [_eFire, _eDistrict, _ePolice], '대'),
-                  const SizedBox(height: 6),
-                  _mobilRow(['한전', '가스', '기타'], [_eElec, _eGas, _eOther], '대'),
-                ]),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 인원 (자동)
+                    Expanded(
+                      flex: 3,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _subLabel('인원', autoNote: '유관기관 자동', trailing: '총 $_autoPersonTotal명'),
+                        const SizedBox(height: 6),
+                        ...() {
+                          final agencies = savedAgencyRows
+                              .where((r) => (r['agency'] ?? '').isNotEmpty).toList();
+                          if (agencies.isEmpty) {
+                            return [Text('유관기관 활동사항 입력 후 자동 반영',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade400))];
+                          }
+                          return agencies.map((r) => Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Row(children: [
+                              Expanded(child: Text(r['agency']!,
+                                  style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                              Text('${r['person'] ?? '0'}명',
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF2E7D32), fontWeight: FontWeight.w600)),
+                            ]),
+                          )).toList();
+                        }(),
+                      ]),
+                    ),
+                    const SizedBox(width: 16),
+                    Container(width: 1, color: const Color(0xFFCCE5CC)),
+                    const SizedBox(width: 16),
+                    // 장비 (수동)
+                    Expanded(
+                      flex: 2,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _subLabel('장비', trailing: '총 $_equipTotal대'),
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          Expanded(child: _compactNumField('소방', _eFire, '대')),
+                          const SizedBox(width: 4),
+                          Expanded(child: _compactNumField('구청', _eDistrict, '대')),
+                          const SizedBox(width: 4),
+                          Expanded(child: _compactNumField('경찰', _ePolice, '대')),
+                        ]),
+                        const SizedBox(height: 4),
+                        Row(children: [
+                          Expanded(child: _compactNumField('한전', _eElec, '대')),
+                          const SizedBox(width: 4),
+                          Expanded(child: _compactNumField('가스', _eGas, '대')),
+                          const SizedBox(width: 4),
+                          Expanded(child: _compactNumField('기타', _eOther, '대')),
+                        ]),
+                      ]),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              // ── 주요활동사항 ──────────────────────────────
               _section(
                 color: const Color(0xFF37474F),
                 icon: Icons.edit_note,
                 title: '주요활동사항',
                 child: TextField(
                   controller: _activities,
-                  maxLines: 8,
+                  maxLines: 5,
                   decoration: const InputDecoration(
-                    hintText: '주요 활동 내용을 자유롭게 서술하세요\n예) 14:32 최초 신고접수 / 14:41 펌프차 1번 도착 / 15:10 연소저지선 확보...',
-                    hintStyle: TextStyle(fontSize: 12, color: Colors.black38),
+                    hintText: '예) 14:32 최초 신고접수 / 14:41 펌프차 1번 도착 / 15:10 연소저지선 확보...',
+                    hintStyle: TextStyle(fontSize: 11, color: Colors.black38),
                     border: OutlineInputBorder(),
                     isDense: true,
-                    contentPadding: EdgeInsets.all(10),
+                    contentPadding: EdgeInsets.all(8),
                   ),
-                  style: const TextStyle(fontSize: 13, height: 1.6),
+                  style: const TextStyle(fontSize: 13, height: 1.5),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -366,116 +412,100 @@ td { padding: 5px 8px; border: 1px solid #ccc; vertical-align: top; }
     );
   }
 
-  static final _colHeader = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600);
-
-  Widget _agencyCell(TextEditingController ctrl, String hint) => TextField(
-    controller: ctrl,
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(fontSize: 10, color: Colors.black38),
-      border: const OutlineInputBorder(), isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    ),
-    style: const TextStyle(fontSize: 12),
+  static const _inputDeco = InputDecoration(
+    border: OutlineInputBorder(),
+    isDense: true,
+    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 7),
   );
 
   Widget _section({required Color color, required IconData icon, required String title, required Widget child}) {
     return Card(
-      elevation: 2,
+      elevation: 1,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: color.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: color.withOpacity(0.25)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: color,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(9)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
           ),
           child: Row(children: [
-            Icon(icon, size: 15, color: Colors.white70),
-            const SizedBox(width: 8),
-            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+            Icon(icon, size: 13, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
           ]),
         ),
-        Padding(padding: const EdgeInsets.all(12), child: child),
+        Padding(padding: const EdgeInsets.all(8), child: child),
       ]),
     );
   }
 
-  Widget _field(String label, TextEditingController ctrl, {String? hint, String? suffix}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: ctrl,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          suffixText: suffix,
-          hintStyle: const TextStyle(fontSize: 11, color: Colors.black38),
-          border: const OutlineInputBorder(),
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        ),
-        style: const TextStyle(fontSize: 13),
+  // 컴팩트 텍스트 필드 (라벨 포함)
+  Widget _cf(String label, TextEditingController ctrl, {String? hint, String? suffix}) {
+    return TextField(
+      controller: ctrl,
+      decoration: _inputDeco.copyWith(
+        labelText: label,
+        hintText: hint,
+        suffixText: suffix,
+        hintStyle: const TextStyle(fontSize: 11, color: Colors.black26),
+        labelStyle: const TextStyle(fontSize: 12),
       ),
+      style: const TextStyle(fontSize: 13),
     );
   }
 
-  Widget _numField(String label, TextEditingController ctrl, Color color, String unit) {
+  // 소제목 행 (자동집계 주석 + 합계 트레일링)
+  Widget _subLabel(String text, {String? autoNote, String? trailing}) {
+    return Row(children: [
+      Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF555555))),
+      if (autoNote != null) ...[
+        const SizedBox(width: 4),
+        Icon(Icons.lock_outline, size: 10, color: Colors.grey.shade400),
+        const SizedBox(width: 2),
+        Text(autoNote, style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+      ],
+      if (trailing != null) ...[
+        const Spacer(),
+        Text(trailing, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1565C0))),
+      ],
+    ]);
+  }
+
+  // 자동계산 인명피해 표시 (작은 박스)
+  Widget _inlineNum(String label, int value, Color color, String unit) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(18),
+        border: Border.all(color: color.withAlpha(70)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text('$label  ', style: TextStyle(fontSize: 11, color: color)),
+        Text('$value$unit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+      ]),
+    );
+  }
+
+  // 컴팩트 숫자 입력 (장비/재산피해)
+  Widget _compactNumField(String label, TextEditingController ctrl, String unit) {
     return TextField(
       controller: ctrl,
       keyboardType: TextInputType.number,
       textAlign: TextAlign.center,
-      decoration: InputDecoration(
+      decoration: _inputDeco.copyWith(
         labelText: label,
         suffixText: unit,
-        border: const OutlineInputBorder(),
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        labelStyle: TextStyle(color: color, fontWeight: FontWeight.bold),
+        labelStyle: const TextStyle(fontSize: 11),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       ),
-      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color),
+      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
     );
   }
 
-  Widget _mobilRow(List<String> labels, List<TextEditingController> ctrls, String unit) {
-    return Row(
-      children: List.generate(labels.length, (i) => Expanded(
-        child: Padding(
-          padding: EdgeInsets.only(right: i < labels.length - 1 ? 8 : 0),
-          child: TextField(
-            controller: ctrls[i],
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            decoration: InputDecoration(
-              labelText: labels[i],
-              suffixText: unit,
-              border: const OutlineInputBorder(),
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-            ),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        ),
-      )),
-    );
-  }
-
-  Widget _label(String text) => Text(text,
-      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade600));
-
-  Widget _totalBox(String text) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-    decoration: BoxDecoration(
-      color: const Color(0xFFE8F0FE),
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: const Color(0xFF1565C0).withOpacity(0.3)),
-    ),
-    child: Text(text,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1565C0))),
-  );
 }

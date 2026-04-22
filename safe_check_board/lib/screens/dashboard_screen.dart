@@ -56,6 +56,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // 탭 (0=건물현황, 1=진입타이머)
   int _currentTab = 0;
 
+  // 인라인 패널 표시 여부
+  bool _showMapColumn = false;
+  bool _showCasualtyColumn = false;
+
+  // 패널 너비/높이 (드래그 조절)
+  double _buildingsW = 480.0;
+  double _mapW = 380.0;
+  double _casualtyW = 360.0;
+  double _mapH = 500.0;
+  static const double _panelMinW = 150.0;
+  static const double _panelMinH = 200.0;
+
+  // 진입 팀 플로어 색상 맵 ("buildingIdx_floor" → [Color, ...])
+  Map<String, List<Color>> _floorTeamColors = {};
+
   // Firebase
   StreamSubscription<SessionData?>? _firestoreSub;
   Timer? _saveDebounce;
@@ -439,6 +454,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _scheduleSave();
   }
 
+  void _showMapPreviewDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog.fullscreen(
+        child: Scaffold(
+          backgroundColor: Colors.grey.shade100,
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.map_outlined, size: 18),
+                SizedBox(width: 8),
+                Text('진압작전도'),
+              ],
+            ),
+            titleTextStyle:
+                const TextStyle(color: Colors.white, fontSize: 16),
+            backgroundColor: const Color(0xFFBF360C),
+            foregroundColor: Colors.white,
+            actions: [
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const OperationMapScreen()),
+                  );
+                },
+                icon: const Icon(Icons.edit_outlined,
+                    color: Colors.white, size: 16),
+                label: const Text('편집',
+                    style: TextStyle(color: Colors.white)),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: const OperationMapPreview(),
+        ),
+      ),
+    );
+  }
+
   void _showSessionCodeDialog() {
     final code = widget.sessionCode;
     showDialog(
@@ -684,6 +745,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isFloorHidden: _isSelectedFloorHidden,
       onMergeRight: _canMergeRight ? _onMergeRight : null,
       onSplitUnit: _canSplit ? _onSplitUnit : null,
+      sessionCode: widget.sessionCode,
     );
   }
 
@@ -793,6 +855,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Navigator.push(context,
                     MaterialPageRoute(builder: (_) => IncidentStatusScreen(sessionCode: widget.sessionCode)));
                 break;
+              case 'timeline':
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => TimelineActionScreen(sessionCode: widget.sessionCode)));
+                break;
               case 'response':
                 Navigator.push(context,
                     MaterialPageRoute(builder: (_) => DisasterResponseScreen(sessionCode: widget.sessionCode)));
@@ -849,6 +915,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ]),
             ),
             const PopupMenuItem(
+              value: 'timeline',
+              child: Row(children: [
+                Icon(Icons.access_time_filled, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('시간대별 조치현황',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'response',
+              child: Row(children: [
+                Icon(Icons.groups_outlined, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('유관기관 활동사항',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'casualty',
+              child: Row(children: [
+                Icon(Icons.personal_injury_outlined, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('인명피해상황',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
+              value: 'incident',
+              child: Row(children: [
+                Icon(Icons.assignment_outlined, size: 16, color: Colors.white70),
+                SizedBox(width: 10),
+                Text('재난발생현황',
+                    style: TextStyle(color: Colors.white, fontSize: 13)),
+              ]),
+            ),
+            const PopupMenuItem(
               value: 'briefing',
               child: Row(children: [
                 Icon(Icons.article_outlined, size: 16, color: Colors.white70),
@@ -863,33 +965,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icon(Icons.dashboard_outlined, size: 16, color: Colors.white70),
                 SizedBox(width: 10),
                 Text('브리핑 게시판',
-                    style: TextStyle(color: Colors.white, fontSize: 13)),
-              ]),
-            ),
-            const PopupMenuItem(
-              value: 'incident',
-              child: Row(children: [
-                Icon(Icons.assignment_outlined, size: 16, color: Colors.white70),
-                SizedBox(width: 10),
-                Text('재난발생현황',
-                    style: TextStyle(color: Colors.white, fontSize: 13)),
-              ]),
-            ),
-            const PopupMenuItem(
-              value: 'response',
-              child: Row(children: [
-                Icon(Icons.access_time_filled, size: 16, color: Colors.white70),
-                SizedBox(width: 10),
-                Text('재난대응 · 유관기관',
-                    style: TextStyle(color: Colors.white, fontSize: 13)),
-              ]),
-            ),
-            const PopupMenuItem(
-              value: 'casualty',
-              child: Row(children: [
-                Icon(Icons.personal_injury_outlined, size: 16, color: Colors.white70),
-                SizedBox(width: 10),
-                Text('인명피해상황',
                     style: TextStyle(color: Colors.white, fontSize: 13)),
               ]),
             ),
@@ -934,33 +1009,79 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildWideLayout() {
+    final rightPanel = SizedBox(
+      width: 300,
+      child: _currentTab == 1
+          ? EntryTimerPanel(
+              buildings: _buildings,
+              onFloorChanged: (m) =>
+                  setState(() => _floorTeamColors = Map.from(m)),
+            )
+          : _buildActionPanel(),
+    );
+
+    final hasSidePanel = _showMapColumn || _showCasualtyColumn;
+
+    // 건물+버튼 스크롤 행
+    final buildingRow = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...List.generate(_buildings.length, (i) => _buildBuildingColumn(i)),
+          if (_buildings.length < 3) _buildAddButton(),
+          if (!_showMapColumn) _buildMapAddButton(),
+          if (!_showCasualtyColumn) _buildCasualtyAddButton(),
+        ],
+      ),
+    );
+
+    // 사이드 패널 없음: 건물 영역 Expanded
+    if (!hasSidePanel) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: buildingRow),
+          rightPanel,
+        ],
+      );
+    }
+
+    // 사이드 패널 있음: 명시적 너비 + 리사이즈 핸들
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 건물 컬럼들 (스크롤 가능)
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ...List.generate(_buildings.length, (i) => _buildBuildingColumn(i)),
-                if (_buildings.length < 3) _buildAddButton(),
-              ],
-            ),
+        SizedBox(width: _buildingsW, child: buildingRow),
+        _PanelResizeHandle(
+          onDrag: (dx) => setState(() =>
+              _buildingsW = (_buildingsW + dx).clamp(_panelMinW, 900.0)),
+        ),
+        if (_showMapColumn) ...[
+          SizedBox(width: _mapW, child: _buildMapColumn()),
+          _PanelResizeHandle(
+            onDrag: (dx) => setState(() =>
+                _mapW = (_mapW + dx).clamp(_panelMinW, 900.0)),
           ),
-        ),
-        // 우측 패널 (300px 고정) — 탭에 따라 액션패널 또는 진입타이머
-        SizedBox(
-          width: 300,
-          child: _currentTab == 1 ? const EntryTimerPanel() : _buildActionPanel(),
-        ),
+        ],
+        if (_showCasualtyColumn) ...[
+          SizedBox(width: _casualtyW, child: _buildCasualtyColumn()),
+          _PanelResizeHandle(
+            onDrag: (dx) => setState(() =>
+                _casualtyW = (_casualtyW + dx).clamp(_panelMinW, 900.0)),
+          ),
+        ],
+        rightPanel,
       ],
     );
   }
 
   Widget _buildNarrowLayout() {
-    if (_currentTab == 1) return const EntryTimerPanel();
+    if (_currentTab == 1) {
+      return EntryTimerPanel(
+        buildings: _buildings,
+        onFloorChanged: (m) => setState(() => _floorTeamColors = Map.from(m)),
+      );
+    }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -968,6 +1089,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           ...List.generate(_buildings.length, (i) => _buildBuildingColumn(i)),
           if (_buildings.length < 3) _buildAddButton(),
+          if (!_showMapColumn) _buildMapAddButton(),
+          if (!_showCasualtyColumn) _buildCasualtyAddButton(),
+          if (_showMapColumn)
+            SizedBox(width: 480, child: _buildMapColumn()),
+          if (_showCasualtyColumn)
+            SizedBox(width: 400, child: _buildCasualtyColumn()),
         ],
       ),
     );
@@ -1007,10 +1134,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // 그리드
           Flexible(
             child: BuildingGrid(
+              buildingIdx: idx,
               building: building,
               state: state,
               selectedUnit: isActive ? _selectedUnit : null,
               selectedFloors: isActive ? _selectedFloors : {},
+              floorTeamColors: _floorTeamColors,
               onUnitTap: (unit) => _onUnitTap(idx, unit),
               onFloorAllTap: (floor) => _onFloorAllTap(idx, floor),
               onEmptyCellTap: (floor, unitIndex) =>
@@ -1137,6 +1266,587 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildMapAddButton() {
+    return GestureDetector(
+      onTap: () => setState(() => _showMapColumn = true),
+      child: Container(
+        width: 80,
+        margin: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.blueGrey.shade200,
+            width: 1.5,
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined,
+                size: 28, color: Colors.blueGrey.shade400),
+            const SizedBox(height: 6),
+            Text(
+              '진압\n작전도',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.blueGrey.shade500,
+                  fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCasualtyAddButton() {
+    return GestureDetector(
+      onTap: () => setState(() => _showCasualtyColumn = true),
+      child: Container(
+        width: 80,
+        margin: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade200, width: 1.5),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.personal_injury_outlined,
+                size: 28, color: Colors.red.shade300),
+            const SizedBox(height: 6),
+            Text(
+              '인명\n피해',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.red.shade400,
+                  fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCasualtyColumn() {
+    return Container(
+      margin: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade200, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(7)),
+              border: Border(bottom: BorderSide(color: Colors.red.shade100)),
+            ),
+            child: Row(children: [
+              Icon(Icons.personal_injury_outlined,
+                  size: 15, color: Colors.red.shade700),
+              const SizedBox(width: 6),
+              const Text('인명피해현황',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => CasualtyStatusScreen(
+                          sessionCode: widget.sessionCode)),
+                ).then((_) => setState(() {})),
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.edit_outlined,
+                        size: 14, color: Colors.red.shade400),
+                    const SizedBox(width: 3),
+                    Text('편집',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.red.shade400)),
+                  ]),
+                ),
+              ),
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: () => setState(() => _showCasualtyColumn = false),
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.close,
+                      size: 15, color: Colors.grey.shade500),
+                ),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: CasualtyDashboardPanel(
+                sessionCode: widget.sessionCode),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapColumn() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: _mapH,
+          child: Container(
+            margin: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(20),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 헤더
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.shade50,
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(7)),
+                    border: Border(
+                        bottom: BorderSide(color: Colors.blueGrey.shade100)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.map_outlined,
+                          size: 15, color: Colors.blueGrey.shade700),
+                      const SizedBox(width: 6),
+                      const Text(
+                        '진압작전도',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      // 팝업 버튼
+                      InkWell(
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (_) => Dialog(
+                            backgroundColor: Colors.transparent,
+                            insetPadding: const EdgeInsets.all(16),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: const OperationMapScreen(),
+                            ),
+                          ),
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.open_in_new,
+                                  size: 14,
+                                  color: Colors.blueGrey.shade500),
+                              const SizedBox(width: 3),
+                              Text('팝업',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blueGrey.shade500)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      // 편집 버튼
+                      InkWell(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const OperationMapScreen()),
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.edit_outlined,
+                                  size: 14,
+                                  color: Colors.blueGrey.shade500),
+                              const SizedBox(width: 3),
+                              Text('편집',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blueGrey.shade500)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      // 닫기 버튼
+                      InkWell(
+                        onTap: () => setState(() => _showMapColumn = false),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(Icons.close,
+                              size: 15, color: Colors.grey.shade500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // 미리보기
+                const Expanded(
+                  child: OperationMapPreview(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // 세로 리사이즈 핸들
+        _HorizontalResizeHandle(
+          onDrag: (dy) => setState(() =>
+              _mapH = (_mapH + dy).clamp(_panelMinH, 1200.0)),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 패널 리사이즈 핸들 ────────────────────────────────────────
+
+class _PanelResizeHandle extends StatefulWidget {
+  final ValueChanged<double> onDrag;
+  const _PanelResizeHandle({required this.onDrag});
+  @override
+  State<_PanelResizeHandle> createState() => _PanelResizeHandleState();
+}
+
+class _PanelResizeHandleState extends State<_PanelResizeHandle> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: Listener(
+        onPointerMove: (e) => widget.onDrag(e.delta.dx),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: _hovering ? 6 : 4,
+          color: _hovering
+              ? Colors.blueGrey.shade400
+              : Colors.grey.shade300,
+        ),
+      ),
+    );
+  }
+}
+
+// ── 세로 리사이즈 핸들 ───────────────────────────────────────
+
+class _HorizontalResizeHandle extends StatefulWidget {
+  final ValueChanged<double> onDrag;
+  const _HorizontalResizeHandle({required this.onDrag});
+  @override
+  State<_HorizontalResizeHandle> createState() =>
+      _HorizontalResizeHandleState();
+}
+
+class _HorizontalResizeHandleState extends State<_HorizontalResizeHandle> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeRow,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: Listener(
+        onPointerMove: (e) => widget.onDrag(e.delta.dy),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: _hovering ? 6 : 4,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: _hovering
+                ? Colors.blueGrey.shade400
+                : Colors.grey.shade300,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── 인명피해현황 대시보드 패널 ────────────────────────────────
+
+class CasualtyDashboardPanel extends StatefulWidget {
+  final String? sessionCode;
+  const CasualtyDashboardPanel({super.key, this.sessionCode});
+  @override
+  State<CasualtyDashboardPanel> createState() => _CasualtyDashboardPanelState();
+}
+
+class _CasualtyDashboardPanelState extends State<CasualtyDashboardPanel> {
+  List<Map<String, String>> _rows = [];
+
+  static const _statusColors = {
+    '지연환자': Color(0xFF212121),
+    '긴급환자':        Color(0xFFE53935),
+    '응급환자':        Color(0xFFF9A825),
+    '비응급환자':      Color(0xFF66BB6A),
+  };
+
+  int _count(String s) => _rows.where((r) => r['status'] == s).length;
+
+  static String _maskName(String s) {
+    final name = s.trim();
+    if (name.isEmpty) return '';
+    final runes = name.runes.toList();
+    if (runes.length <= 1) return name;
+    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _rows = List.from(savedCasualtyRows);
+    if (_rows.isEmpty) return;
+    if (widget.sessionCode != null) {
+      FirebaseService.instance
+          .loadSecondaryData(widget.sessionCode!)
+          .then((data) {
+        if (!mounted || data == null) return;
+        final raw = data['casualty'];
+        if (raw == null) return;
+        final list = ((raw['rows'] as List?) ?? [])
+            .map((m) => Map<String, String>.from(
+                (m as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList();
+        if (list.isNotEmpty) setState(() => _rows = list);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final delayed     = _count('지연환자');
+    final urgent      = _count('긴급환자');
+    final emergency   = _count('응급환자');
+    final nonEmergency = _count('비응급환자');
+    final total = delayed + urgent + emergency + nonEmergency;
+
+    final filled = _rows.where((r) =>
+        (r['status'] ?? '').isNotEmpty || (r['name'] ?? '').isNotEmpty).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 요약 타일
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+          child: Row(children: [
+            _tile('총계', total, Colors.black87, isTotal: true),
+            const SizedBox(width: 4),
+            _tile('사망', delayed, const Color(0xFF212121)),
+            const SizedBox(width: 4),
+            _tile('긴급', urgent, const Color(0xFFE53935)),
+            const SizedBox(width: 4),
+            _tile('응급', emergency, const Color(0xFF2E7D32)),
+            const SizedBox(width: 4),
+            _tile('비응급', nonEmergency, const Color(0xFF66BB6A)),
+          ]),
+        ),
+        const Divider(height: 8),
+        // 목록
+        Expanded(
+          child: filled.isEmpty
+              ? Center(
+                  child: Text('등록된 인명피해 없음',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade400)))
+              : ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  itemCount: filled.length,
+                  itemBuilder: (_, i) {
+                    final r = filled[i];
+                    final status = r['status'] ?? '';
+                    final color =
+                        _statusColors[status] ?? Colors.grey.shade400;
+                    final name = _maskName(r['name'] ?? '');
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.07),
+                        borderRadius: BorderRadius.circular(6),
+                        border:
+                            Border.all(color: color.withOpacity(0.25)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 1행: 번호 + 구분뱃지 + 이름
+                          Row(children: [
+                            Container(
+                              width: 6, height: 6,
+                              margin: const EdgeInsets.only(right: 5),
+                              decoration: BoxDecoration(
+                                  color: color, shape: BoxShape.circle),
+                            ),
+                            Text('${i + 1}',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black54)),
+                            const SizedBox(width: 5),
+                            if (status.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1),
+                                margin: const EdgeInsets.only(right: 5),
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                                child: Text(
+                                  status.replaceAll('환자', '').replaceAll('(사망자)', ''),
+                                  style: const TextStyle(
+                                      fontSize: 9,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            Expanded(
+                              child: Text(
+                                name.isNotEmpty ? name : '(이름 미입력)',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: name.isNotEmpty
+                                        ? Colors.black87
+                                        : Colors.grey.shade400),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ]),
+                          // 2행: 발견장소 · 부상정도 · 이송병원
+                          if ([r['found'], r['injury'], r['hospital']]
+                              .any((v) => (v ?? '').isNotEmpty))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3, left: 11),
+                              child: Row(children: [
+                                if ((r['found'] ?? '').isNotEmpty) ...[
+                                  Icon(Icons.location_on_outlined,
+                                      size: 11, color: Colors.grey.shade500),
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(r['found']!,
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600),
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                if ((r['injury'] ?? '').isNotEmpty) ...[
+                                  Icon(Icons.healing_outlined,
+                                      size: 11, color: Colors.grey.shade500),
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(r['injury']!,
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600),
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                if ((r['hospital'] ?? '').isNotEmpty) ...[
+                                  Icon(Icons.local_hospital_outlined,
+                                      size: 11, color: Colors.grey.shade500),
+                                  const SizedBox(width: 2),
+                                  Flexible(
+                                    child: Text(r['hospital']!,
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.grey.shade600),
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
+                              ]),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tile(String label, int count, Color color, {bool isTotal = false}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: isTotal ? const Color(0xFF1a1a1a) : color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+              color: isTotal ? Colors.black45 : color.withOpacity(0.3)),
+        ),
+        child: Column(children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: isTotal ? Colors.white70 : color),
+              textAlign: TextAlign.center),
+          Text('$count',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isTotal ? Colors.white : color)),
+        ]),
       ),
     );
   }

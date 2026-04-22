@@ -3,10 +3,18 @@ import 'dart:math';
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:js' as js;
 import 'package:flutter/material.dart';
+import '../../models/building.dart';
 import '../../models/team_entry.dart';
 
 class EntryTimerPanel extends StatefulWidget {
-  const EntryTimerPanel({super.key});
+  final List<Building> buildings;
+  final void Function(Map<String, List<Color>>)? onFloorChanged;
+
+  const EntryTimerPanel({
+    super.key,
+    this.buildings = const [],
+    this.onFloorChanged,
+  });
 
   @override
   State<EntryTimerPanel> createState() => _EntryTimerPanelState();
@@ -18,13 +26,14 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
   bool _soundEnabled = true;
 
   final List<TeamEntry> _teams = [
-    TeamEntry(id: '1', name: '1착대'),
-    TeamEntry(id: '2', name: '2착대'),
-    TeamEntry(id: '3', name: '3착대'),
+    TeamEntry(id: '1', name: '1착대', teamColor: TeamEntry.teamColors[0]),
+    TeamEntry(id: '2', name: '2착대', teamColor: TeamEntry.teamColors[1]),
+    TeamEntry(id: '3', name: '3착대', teamColor: TeamEntry.teamColors[2]),
   ];
 
   Timer? _clock;
   int _nextId = 4;
+  int _nextUnitNum = 4; // 다음 착대 번호
 
   @override
   void initState() {
@@ -42,6 +51,7 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
 
   // ── 1초 틱 ────────────────────────────────────────────────
   void _tick() {
+    bool changed = false;
     for (final team in _teams) {
       if (team.status == TeamStatus.waiting ||
           team.status == TeamStatus.paused) continue;
@@ -58,11 +68,10 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
         team.status = TeamStatus.active;
       }
 
-      // 상태 변경 시 즉시 알림
-      if (oldStatus != team.status && _soundEnabled) {
-        _playSound(team.status == TeamStatus.danger);
+      if (oldStatus != team.status) {
+        changed = true;
+        if (_soundEnabled) _playSound(team.status == TeamStatus.danger);
       }
-      // 경고/위험 상태 30초마다 반복 알림
       if ((team.status == TeamStatus.warning ||
               team.status == TeamStatus.danger) &&
           secs > 0 &&
@@ -71,6 +80,7 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
         _playSound(team.status == TeamStatus.danger);
       }
     }
+    if (changed) _notifyFloorChanged();
   }
 
   void _playSound(bool isDanger) {
@@ -86,38 +96,102 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
     } catch (_) {}
   }
 
+  // ── 플로어→색상 맵 알림 ────────────────────────────────────
+  void _notifyFloorChanged() {
+    if (widget.onFloorChanged == null) return;
+    final map = <String, List<Color>>{};
+    for (final team in _teams) {
+      if (team.assignedFloorKey != null &&
+          team.assignedFloorKey!.isNotEmpty &&
+          team.status != TeamStatus.waiting) {
+        map.putIfAbsent(team.assignedFloorKey!, () => []).add(team.teamColor);
+      }
+    }
+    widget.onFloorChanged!(map);
+  }
+
+  // ── 층 레이블 파생 ─────────────────────────────────────────
+  String _getFloorLabel(String key) {
+    final parts = key.split('_');
+    if (parts.length != 2) return key;
+    final bi = int.tryParse(parts[0]);
+    final fl = int.tryParse(parts[1]);
+    if (bi == null || fl == null || bi >= widget.buildings.length) return key;
+    final building = widget.buildings[bi];
+    final flLabel = building.isHorizontal
+        ? '${fl}구역'
+        : fl < 0
+            ? 'B${fl.abs()}F'
+            : '${fl}F';
+    return widget.buildings.length > 1 ? '${building.name} > $flLabel' : flLabel;
+  }
+
+  List<DropdownMenuItem<String>> _buildFloorItems() {
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(value: '', child: Text('선택 안함')),
+    ];
+    for (var bi = 0; bi < widget.buildings.length; bi++) {
+      final building = widget.buildings[bi];
+      for (final floor in building.floorsDescending) {
+        final key = '${bi}_$floor';
+        final flLabel = building.isHorizontal
+            ? '${floor}구역'
+            : floor < 0
+                ? 'B${floor.abs()}F'
+                : '${floor}F';
+        final displayLabel = widget.buildings.length > 1
+            ? '${building.name} > $flLabel'
+            : flLabel;
+        items.add(DropdownMenuItem(value: key, child: Text(displayLabel)));
+      }
+    }
+    return items;
+  }
+
   // ── 팀 조작 ───────────────────────────────────────────────
-  void _start(TeamEntry t) => setState(() {
-        t.status = TeamStatus.active;
-        t.entryTime = DateTime.now();
-        t.pausedElapsed = null;
-        t.pausedFromStatus = null;
-      });
+  void _start(TeamEntry t) {
+    setState(() {
+      t.status = TeamStatus.active;
+      t.entryTime = DateTime.now();
+      t.pausedElapsed = null;
+      t.pausedFromStatus = null;
+    });
+    _notifyFloorChanged();
+  }
 
-  void _pause(TeamEntry t) => setState(() {
-        t.pausedElapsed = t.elapsed;
-        t.pausedFromStatus = t.status;
-        t.status = TeamStatus.paused;
-      });
+  void _pause(TeamEntry t) {
+    setState(() {
+      t.pausedElapsed = t.elapsed;
+      t.pausedFromStatus = t.status;
+      t.status = TeamStatus.paused;
+    });
+    _notifyFloorChanged();
+  }
 
-  void _resume(TeamEntry t) => setState(() {
-        final elapsed = t.pausedElapsed ?? Duration.zero;
-        t.entryTime = DateTime.now().subtract(elapsed);
-        final mins = elapsed.inMinutes;
-        t.status = mins >= _dangerMinutes
-            ? TeamStatus.danger
-            : mins >= _warningMinutes
-                ? TeamStatus.warning
-                : TeamStatus.active;
-        t.pausedFromStatus = null;
-      });
+  void _resume(TeamEntry t) {
+    setState(() {
+      final elapsed = t.pausedElapsed ?? Duration.zero;
+      t.entryTime = DateTime.now().subtract(elapsed);
+      final mins = elapsed.inMinutes;
+      t.status = mins >= _dangerMinutes
+          ? TeamStatus.danger
+          : mins >= _warningMinutes
+              ? TeamStatus.warning
+              : TeamStatus.active;
+      t.pausedFromStatus = null;
+    });
+    _notifyFloorChanged();
+  }
 
-  void _reset(TeamEntry t) => setState(() {
-        t.status = TeamStatus.waiting;
-        t.entryTime = null;
-        t.pausedElapsed = null;
-        t.pausedFromStatus = null;
-      });
+  void _reset(TeamEntry t) {
+    setState(() {
+      t.status = TeamStatus.waiting;
+      t.entryTime = null;
+      t.pausedElapsed = null;
+      t.pausedFromStatus = null;
+    });
+    _notifyFloorChanged();
+  }
 
   // ── 다이얼로그 ────────────────────────────────────────────
   void _confirmReset(TeamEntry t) {
@@ -154,6 +228,7 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               setState(() => _teams.remove(t));
+              _notifyFloorChanged();
               Navigator.pop(ctx);
             },
             child: const Text('삭제'),
@@ -164,87 +239,114 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
   }
 
   void _showAddOrEditDialog([TeamEntry? editing]) {
-    final nameCtrl = TextEditingController(text: editing?.name ?? '');
     final unitCtrl = TextEditingController(text: editing?.unit ?? '');
-    final noteCtrl = TextEditingController(text: editing?.note ?? '');
+    String selectedFloorKey = editing?.assignedFloorKey ?? '';
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(editing == null ? '대 추가' : '대 편집'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: '대명',
-                hintText: '예) 1착대, 2착대',
-                border: OutlineInputBorder(),
-                isDense: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: editing == null
+              ? Text('대 추가 (${_nextUnitNum}착대)')
+              : Row(
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: editing.teamColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('${editing.name} 편집'),
+                  ],
+                ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: unitCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '단대명',
+                  hintText: '예) 신수대, 성산119',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: unitCtrl,
-              decoration: const InputDecoration(
-                labelText: '단대명 (선택)',
-                hintText: '예) 신수대, 성산119',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              decoration: const InputDecoration(
-                labelText: '활동구역/비고 (선택)',
-                hintText: '예) 4층, B1~3층, 계단실',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
+              const SizedBox(height: 12),
+              widget.buildings.isNotEmpty
+                  ? DropdownButtonFormField<String>(
+                      value: selectedFloorKey,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: '활동구역',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: _buildFloorItems(),
+                      onChanged: (v) =>
+                          setSt(() => selectedFloorKey = v ?? ''),
+                    )
+                  : TextField(
+                      decoration: const InputDecoration(
+                        labelText: '활동구역/비고 (선택)',
+                        hintText: '예) 4층, B1~3층',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (v) => selectedFloorKey = v,
+                    ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('취소')),
+            FilledButton(
+              onPressed: () {
+                final unit = unitCtrl.text.trim().isEmpty
+                    ? null
+                    : unitCtrl.text.trim();
+                final floorKey = selectedFloorKey.isEmpty
+                    ? null
+                    : selectedFloorKey;
+                final floorLabel =
+                    floorKey != null ? _getFloorLabel(floorKey) : null;
+
+                if (editing != null) {
+                  setState(() {
+                    editing.unit = unit;
+                    editing.assignedFloorKey = floorKey;
+                    editing.note = floorLabel;
+                  });
+                } else {
+                  final color = TeamEntry
+                      .teamColors[_teams.length % TeamEntry.teamColors.length];
+                  setState(() => _teams.add(TeamEntry(
+                        id: '${_nextId++}',
+                        name: '${_nextUnitNum++}착대',
+                        teamColor: color,
+                        unit: unit,
+                        assignedFloorKey: floorKey,
+                        note: floorLabel,
+                      )));
+                }
+                _notifyFloorChanged();
+                Navigator.pop(ctx);
+              },
+              child: const Text('저장'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
-          FilledButton(
-            onPressed: () {
-              final name = nameCtrl.text.trim();
-              if (name.isEmpty) return;
-              final unit =
-                  unitCtrl.text.trim().isEmpty ? null : unitCtrl.text.trim();
-              final note =
-                  noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim();
-              if (editing != null) {
-                setState(() {
-                  editing.name = name;
-                  editing.unit = unit;
-                  editing.note = note;
-                });
-              } else {
-                setState(() => _teams.add(TeamEntry(
-                      id: '${_nextId++}',
-                      name: name,
-                      unit: unit,
-                      note: note,
-                    )));
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('저장'),
-          ),
-        ],
       ),
     );
   }
 
   void _showSettingsDialog() {
-    final warnCtrl =
-        TextEditingController(text: _warningMinutes.toString());
-    final dangerCtrl =
-        TextEditingController(text: _dangerMinutes.toString());
+    final warnCtrl = TextEditingController(text: _warningMinutes.toString());
+    final dangerCtrl = TextEditingController(text: _dangerMinutes.toString());
     bool sound = _soundEnabled;
     showDialog(
       context: context,
@@ -333,50 +435,112 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
       }
     }
 
-    // ── 상황 요약바 ────────────────────────────────────────
-    final statusBar = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    // ── 헤더: 타이틀+버튼 / 상태칩 2줄 구조
+    final header = Container(
       color: const Color(0xFF1A237E),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.timer, color: Colors.white, size: 16),
-          const SizedBox(width: 6),
-          const Text(
-            '진입 타이머',
-            style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 13),
-          ),
-          const SizedBox(width: 10),
-          _chip('대기', waiting, Colors.grey.shade400),
-          _chip('진입', active, Colors.green.shade400),
-          _chip('경고', warning, Colors.orange.shade500),
-          _chip('위험', danger, Colors.red.shade500),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white70, size: 18),
-            onPressed: _showSettingsDialog,
-            tooltip: '설정',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          ),
-          if (_teams.length < 7)
-            IconButton(
-              icon: const Icon(Icons.group_add, color: Colors.white, size: 18),
-              onPressed: () => _showAddOrEditDialog(),
-              tooltip: '대 추가',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          // 1줄: 타이틀 + 설정 버튼
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              children: [
+                const Icon(Icons.timer, color: Colors.white, size: 16),
+                const SizedBox(width: 6),
+                const Text(
+                  '진입 타이머',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
+                ),
+                const Spacer(),
+                // 설정 버튼 — 더 큰 터치 영역
+                Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: _showSettingsDialog,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.settings,
+                              color: Colors.white70, size: 16),
+                          SizedBox(width: 4),
+                          Text('설정',
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+          ),
+          // 2줄: 상태 칩
+          Padding(
+            padding:
+                const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+            child: Row(
+              children: [
+                _chip('대기', waiting, Colors.grey.shade400),
+                _chip('진입', active, Colors.green.shade400),
+                _chip('경고', warning, Colors.orange.shade500),
+                _chip('위험', danger, Colors.red.shade500),
+              ],
+            ),
+          ),
         ],
       ),
     );
 
-    // ── CustomScrollView로 Expanded 없이 구성 (높이 제약 문제 해결) ──
+    // ── 팀 추가 카드
+    final addCard = Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: _showAddOrEditDialog,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: Colors.indigo.shade200, width: 1.5,
+                  style: BorderStyle.solid),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_circle_outline,
+                    size: 18, color: Colors.indigo.shade400),
+                const SizedBox(width: 6),
+                Text(
+                  '${_nextUnitNum}착대 추가',
+                  style: TextStyle(
+                      color: Colors.indigo.shade600,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(child: statusBar),
+        SliverToBoxAdapter(child: header),
         if (_teams.isEmpty)
           SliverFillRemaining(
             child: Center(
@@ -388,9 +552,9 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
                   const SizedBox(height: 12),
                   Text('등록된 대가 없습니다',
                       style: TextStyle(color: Colors.grey.shade500)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: () => _showAddOrEditDialog(),
+                    onPressed: _showAddOrEditDialog,
                     icon: const Icon(Icons.add),
                     label: const Text('첫 번째 대 추가'),
                   ),
@@ -398,14 +562,15 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
               ),
             ),
           )
-        else
+        else ...[
           SliverPadding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
             sliver: SliverList.separated(
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemCount: _teams.length,
               itemBuilder: (_, i) {
                 final team = _teams[i];
+                final isFirst = team.id == '1';
                 final displayStatus = team.status == TeamStatus.paused
                     ? (team.pausedFromStatus ?? TeamStatus.active)
                     : team.status;
@@ -414,6 +579,7 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
                   displayStatus: displayStatus,
                   warningMinutes: _warningMinutes,
                   dangerMinutes: _dangerMinutes,
+                  canDelete: !isFirst,
                   onStart: () => _start(team),
                   onPause: () => _pause(team),
                   onResume: () => _resume(team),
@@ -424,6 +590,8 @@ class _EntryTimerPanelState extends State<EntryTimerPanel> {
               },
             ),
           ),
+          SliverToBoxAdapter(child: addCard),
+        ],
       ],
     );
   }
@@ -454,6 +622,7 @@ class _TeamTimerCard extends StatelessWidget {
   final TeamStatus displayStatus;
   final int warningMinutes;
   final int dangerMinutes;
+  final bool canDelete;
   final VoidCallback onStart;
   final VoidCallback onPause;
   final VoidCallback onResume;
@@ -466,6 +635,7 @@ class _TeamTimerCard extends StatelessWidget {
     required this.displayStatus,
     required this.warningMinutes,
     required this.dangerMinutes,
+    required this.canDelete,
     required this.onStart,
     required this.onPause,
     required this.onResume,
@@ -494,15 +664,32 @@ class _TeamTimerCard extends StatelessWidget {
             // 헤더
             Row(
               children: [
+                // 팀 색상 원
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: team.teamColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                          color: team.teamColor.withAlpha(120),
+                          blurRadius: 3)
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // 상태 점
+                Container(
+                  width: 6,
+                  height: 6,
                   decoration: BoxDecoration(
                     color: displayStatus.color,
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 Text(team.name,
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 14)),
@@ -516,9 +703,23 @@ class _TeamTimerCard extends StatelessWidget {
                 ],
                 if (team.note != null) ...[
                   const SizedBox(width: 6),
-                  Text('// ${team.note}',
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: team.teamColor.withAlpha(30),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                          color: team.teamColor.withAlpha(100), width: 1),
+                    ),
+                    child: Text(
+                      team.note!,
                       style: TextStyle(
-                          fontSize: 11, color: Colors.grey.shade500)),
+                          fontSize: 10,
+                          color: team.teamColor,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ],
                 const Spacer(),
                 InkWell(
@@ -530,15 +731,16 @@ class _TeamTimerCard extends StatelessWidget {
                         size: 14, color: Colors.grey.shade500),
                   ),
                 ),
-                InkWell(
-                  onTap: onDelete,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(Icons.close,
-                        size: 14, color: Colors.grey.shade500),
+                if (canDelete)
+                  InkWell(
+                    onTap: onDelete,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.close,
+                          size: 14, color: Colors.grey.shade500),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -552,6 +754,7 @@ class _TeamTimerCard extends StatelessWidget {
                     painter: _CircularTimerPainter(
                       progress: progress.toDouble(),
                       color: displayStatus.color,
+                      ringColor: team.teamColor,
                     ),
                     child: Center(
                       child: Text(
@@ -671,8 +874,13 @@ class _TeamTimerCard extends StatelessWidget {
 class _CircularTimerPainter extends CustomPainter {
   final double progress;
   final Color color;
+  final Color ringColor;
 
-  _CircularTimerPainter({required this.progress, required this.color});
+  _CircularTimerPainter({
+    required this.progress,
+    required this.color,
+    required this.ringColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -681,17 +889,17 @@ class _CircularTimerPainter extends CustomPainter {
     const strokeWidth = 5.0;
     const startAngle = -pi / 2;
 
-    // 배경 트랙
+    // 팀 색상 배경 트랙
     canvas.drawCircle(
       center,
       radius,
       Paint()
-        ..color = Colors.grey.shade200
+        ..color = ringColor.withAlpha(40)
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth,
     );
 
-    // 진행 아크
+    // 진행 아크 (상태 색상)
     if (progress > 0) {
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
@@ -709,5 +917,7 @@ class _CircularTimerPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CircularTimerPainter old) =>
-      old.progress != progress || old.color != color;
+      old.progress != progress ||
+      old.color != color ||
+      old.ringColor != ringColor;
 }

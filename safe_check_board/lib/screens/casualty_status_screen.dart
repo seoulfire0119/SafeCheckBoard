@@ -7,13 +7,13 @@ import '../services/firebase_service.dart';
 
 // ── 상태 옵션 ─────────────────────────────────────────────────
 
-const List<String> kCasualtyStatuses = ['사망', '부상', '단순응급처치', '기타'];
+const List<String> kCasualtyStatuses = ['지연환자', '긴급환자', '응급환자', '비응급환자'];
 
 const Map<String, Color> kCasualtyColors = {
-  '사망':       Color(0xFFB71C1C),
-  '부상':       Color(0xFFE65100),
-  '단순응급처치': Color(0xFF1565C0),
-  '기타':       Color(0xFF546E7A),
+  '지연환자': Color(0xFF212121),  // 검은색
+  '긴급환자': Color(0xFFE53935),  // 빨간색
+  '응급환자': Color(0xFFF9A825),  // 노란색
+  '비응급환자': Color(0xFF66BB6A),  // 초록색
 };
 
 // ── 데이터 모델 ──────────────────────────────────────────────
@@ -36,7 +36,7 @@ class _CasualtyRow {
 }
 
 // ── 세션 내 저장 상태 ────────────────────────────────────────
-List<Map<String, String>> _savedCasualtyRows = [];
+List<Map<String, String>> savedCasualtyRows = [];
 int _savedCasualtyPage = 0;
 
 // ── 인명피해상황 화면 ─────────────────────────────────────────
@@ -65,11 +65,11 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
 
   // 환자현황 자동 집계
   int _count(String status) => _casualtyRows.where((r) => r.status == status).length;
-  int get _deadCount       => _count('사망');
-  int get _injuredCount    => _count('부상');
-  int get _firstAidCount   => _count('단순응급처치');
-  int get _otherCount      => _count('기타');
-  int get _totalCount      => _deadCount + _injuredCount;
+  int get _delayedCount    => _count('지연환자');
+  int get _urgentCount     => _count('긴급환자');
+  int get _emergencyCount  => _count('응급환자');
+  int get _nonEmergencyCount => _count('비응급환자');
+  int get _totalCount      => _delayedCount + _urgentCount + _emergencyCount + _nonEmergencyCount;
 
   void _scheduleSave() {
     if (widget.sessionCode == null) return;
@@ -121,8 +121,8 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
   void initState() {
     super.initState();
     // 로컬 캐시로 즉시 복원
-    _applyRows(_savedCasualtyRows);
-    if (_savedCasualtyRows.isNotEmpty) {
+    _applyRows(savedCasualtyRows);
+    if (savedCasualtyRows.isNotEmpty) {
       _currentPage = _savedCasualtyPage.clamp(0, _totalPages - 1);
     }
     // Firebase에서 최신 데이터 로드
@@ -142,7 +142,7 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
-    _savedCasualtyRows = _collectRows();
+    savedCasualtyRows = _collectRows();
     _savedCasualtyPage = _currentPage;
     for (final r in _casualtyRows) r.dispose();
     super.dispose();
@@ -160,7 +160,7 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
     }
     b.writeln();
     b.writeln('[환자현황]');
-    b.writeln('  총계(사망+부상): ${_totalCount}명  사망: ${_deadCount}명  부상: ${_injuredCount}명  단순응급처치: ${_firstAidCount}명  기타: ${_otherCount}명');
+    b.writeln('  총계: ${_totalCount}명  지연(사망): ${_delayedCount}명  긴급: ${_urgentCount}명  응급: ${_emergencyCount}명  비응급: ${_nonEmergencyCount}명');
     return b.toString();
   }
 
@@ -180,8 +180,10 @@ class _CasualtyStatusScreenState extends State<CasualtyStatusScreen> {
   String _statusBadge(String status) {
     if (status.isEmpty) return '';
     const colors = {
-      '사망': '#B71C1C', '부상': '#E65100',
-      '단순응급처치': '#1565C0', '기타': '#546E7A',
+      '지연환자': '#212121',
+      '긴급환자': '#E53935',
+      '응급환자': '#F9A825',
+      '비응급환자': '#66BB6A',
     };
     final c = colors[status] ?? '#333';
     return '<span style="background:$c;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;">$status</span>';
@@ -199,9 +201,9 @@ table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 th { background: #f0f0f0; padding: 5px 6px; text-align: left; border: 1px solid #ccc; font-weight: bold; vertical-align: top; font-size: 11px; }
 td { padding: 5px 6px; border: 1px solid #ccc; vertical-align: middle; }
 .summary-table td { font-size: 15px; font-weight: bold; text-align: center; padding: 10px 8px; }
-.dead   { color: #B71C1C; } .injured { color: #E65100; }
-.first  { color: #1565C0; } .other   { color: #546E7A; }
-.total  { color: #1a1a1a; background: #f5f5f5; }
+.delayed  { color: #212121; } .urgent  { color: #E53935; }
+.emergency { color: #2E7D32; } .non     { color: #66BB6A; }
+.total    { color: #1a1a1a; background: #f5f5f5; }
 @media print { body { padding: 1cm; } }
 </style>
 <script>window.onload=function(){window.print();}</script>
@@ -210,18 +212,18 @@ td { padding: 5px 6px; border: 1px solid #ccc; vertical-align: middle; }
 <h2>환자현황</h2>
 <table class="summary-table">
   <tr>
-    <th style="width:20%">총계<br><small>(사망+부상)</small></th>
-    <th style="width:20%">사망</th>
-    <th style="width:20%">부상</th>
-    <th style="width:20%">단순응급처치</th>
-    <th style="width:20%">기타</th>
+    <th style="width:20%">총계</th>
+    <th style="width:20%">지연환자</th>
+    <th style="width:20%">긴급환자</th>
+    <th style="width:20%">응급환자</th>
+    <th style="width:20%">비응급환자</th>
   </tr>
   <tr>
     <td class="total">${_totalCount}명</td>
-    <td class="dead">${_deadCount}명</td>
-    <td class="injured">${_injuredCount}명</td>
-    <td class="first">${_firstAidCount}명</td>
-    <td class="other">${_otherCount}명</td>
+    <td class="delayed">${_delayedCount}명</td>
+    <td class="urgent">${_urgentCount}명</td>
+    <td class="emergency">${_emergencyCount}명</td>
+    <td class="non">${_nonEmergencyCount}명</td>
   </tr>
 </table>
 <h2>인명피해 목록</h2>
@@ -233,8 +235,8 @@ td { padding: 5px 6px; border: 1px solid #ccc; vertical-align: middle; }
   <th style="width:40px">성별</th>
   <th style="width:36px">연령</th>
   <th style="width:80px">발견장소</th>
-  <th style="width:80px">이송구급대</th>
-  <th style="width:100px">이송병원</th>
+  <th style="width:80px">구급대</th>
+  <th style="width:100px">이송병원/현장처치</th>
   <th style="width:110px">부상정도(부위)</th>
   <th>기타</th>
 </tr>
@@ -246,6 +248,15 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
   }
 
   static final _colHeader = TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600);
+
+  // 성명 마스킹: 성(첫 글자)만 표시, 나머지는 ● 처리
+  static String _maskName(String s) {
+    final name = s.trim();
+    if (name.isEmpty) return '';
+    final runes = name.runes.toList();
+    if (runes.length <= 1) return name;
+    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1);
+  }
 
   Widget _cell(TextEditingController ctrl, String hint, {double? width}) {
     Widget field = TextField(
@@ -378,15 +389,15 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
                 title: '환자현황',
                 child: Column(children: [
                   Row(children: [
-                    _summaryTile('총계\n(사망+부상)', _totalCount, Colors.black87, isTotal: true),
+                    _summaryTile('총계', _totalCount, Colors.black87, isTotal: true),
                     const SizedBox(width: 8),
-                    _summaryTile('사망', _deadCount, const Color(0xFFB71C1C)),
+                    _summaryTile('지연환자', _delayedCount, const Color(0xFF212121)),
                     const SizedBox(width: 8),
-                    _summaryTile('부상', _injuredCount, const Color(0xFFE65100)),
+                    _summaryTile('긴급환자', _urgentCount, const Color(0xFFE53935)),
                     const SizedBox(width: 8),
-                    _summaryTile('단순응급처치', _firstAidCount, const Color(0xFF1565C0)),
+                    _summaryTile('응급환자', _emergencyCount, const Color(0xFF2E7D32)),
                     const SizedBox(width: 8),
-                    _summaryTile('기타', _otherCount, const Color(0xFF546E7A)),
+                    _summaryTile('비응급환자', _nonEmergencyCount, const Color(0xFF66BB6A)),
                   ]),
                   const SizedBox(height: 8),
                   Text(
@@ -420,9 +431,9 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
                           const SizedBox(width: 6),
                           SizedBox(width: 90,  child: Text('발견장소', style: _colHeader)),
                           const SizedBox(width: 6),
-                          SizedBox(width: 90,  child: Text('이송구급대', style: _colHeader)),
+                          SizedBox(width: 90,  child: Text('구급대', style: _colHeader)),
                           const SizedBox(width: 6),
-                          SizedBox(width: 110, child: Text('이송병원', style: _colHeader)),
+                          SizedBox(width: 110, child: Text('이송병원/현장처치', style: _colHeader)),
                           const SizedBox(width: 6),
                           SizedBox(width: 120, child: Text('부상정도(부위)', style: _colHeader)),
                           const SizedBox(width: 6),
@@ -439,7 +450,7 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
                             const SizedBox(width: 6),
                             _statusDropdown(r),
                             const SizedBox(width: 6),
-                            _cell(r.nameCtrl, '홍길동(한국)', width: 100),
+                            _MaskedNameField(ctrl: r.nameCtrl, width: 100),
                             const SizedBox(width: 6),
                             _cell(r.genderCtrl, '남/여', width: 52),
                             const SizedBox(width: 6),
@@ -507,6 +518,96 @@ ${_casualtyRows.map((r) => '<tr><td style="text-align:center">${r.no}</td><td>${
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── 성명 마스킹 필드 (포커스 시 원본, 비포커스 시 성●● 표시) ──────────
+class _MaskedNameField extends StatefulWidget {
+  final TextEditingController ctrl;
+  final double width;
+  const _MaskedNameField({required this.ctrl, required this.width});
+  @override
+  State<_MaskedNameField> createState() => _MaskedNameFieldState();
+}
+
+class _MaskedNameFieldState extends State<_MaskedNameField> {
+  late final FocusNode _focus;
+  bool _isFocused = false;
+
+  static String _mask(String s) {
+    final name = s.trim();
+    if (name.isEmpty) return '';
+    final runes = name.runes.toList();
+    if (runes.length <= 1) return name;
+    return String.fromCharCode(runes[0]) + '●' * (runes.length - 1);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _focus = FocusNode();
+    _focus.addListener(() => setState(() => _isFocused = _focus.hasFocus));
+    widget.ctrl.addListener(() { if (!_isFocused) setState(() {}); });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final masked = _mask(widget.ctrl.text);
+    final showMask = !_isFocused && widget.ctrl.text.isNotEmpty;
+
+    return SizedBox(
+      width: widget.width,
+      child: Stack(
+        children: [
+          // TextField가 높이를 결정 (항상 존재)
+          TextField(
+            controller: widget.ctrl,
+            focusNode: _focus,
+            decoration: const InputDecoration(
+              hintText: '성명(국적)',
+              hintStyle: TextStyle(fontSize: 10, color: Colors.black26),
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            ),
+            style: TextStyle(
+              fontSize: 12,
+              color: showMask ? Colors.transparent : Colors.black87,
+            ),
+          ),
+          // 마스킹 오버레이: TextField와 동일 영역을 Positioned.fill로 덮음
+          if (showMask)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => _focus.requestFocus(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade400),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(masked,
+                          style: const TextStyle(fontSize: 12, color: Colors.black87),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    Icon(Icons.lock_outline, size: 12, color: Colors.grey.shade400),
+                  ]),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

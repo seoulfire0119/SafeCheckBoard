@@ -275,6 +275,11 @@ const List<Color> kTileColors = [
   Color(0xFF546E7A), // 회청
 ];
 
+// ── 공유 헬퍼 ──────────────────────────────────────────────
+bool mapIsBackgroundType(MapItemType t) =>
+    t == MapItemType.road || t == MapItemType.entrance ||
+    t == MapItemType.fireHydrant || t == MapItemType.building;
+
 // ── Screen ─────────────────────────────────────────────────
 
 // ── 진압작전도 영속 데이터 (화면 이탈 후 복원용) ──────────────
@@ -463,7 +468,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
               children: [
                 CustomPaint(
                   size: Size(w, h),
-                  painter: _GridPainter(cell: _cell),
+                  painter: MapGridPainter(cell: _cell),
                 ),
                 // 페인트 드래그 — 이번 드래그에서 배치된 셀 하이라이트
                 if (_isPainting)
@@ -603,9 +608,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
     );
   }
 
-  bool _isBackgroundType(MapItemType t) =>
-      t == MapItemType.road || t == MapItemType.entrance ||
-      t == MapItemType.fireHydrant || t == MapItemType.building;
+  bool _isBackgroundType(MapItemType t) => mapIsBackgroundType(t);
 
   List<Widget> _buildItemWidgets() {
     // 배경 아이템(도로·출입구·소화전)을 먼저 렌더링 → 차량이 위에 올라옴
@@ -624,7 +627,11 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
         width: item.w * _cell,
         height: item.h * _cell,
         child: IgnorePointer(
-          ignoring: _eraserMode || _groupMode,
+          // 차량 등 전경 아이템 배치 중이면 도로/출입구 같은 배경 아이템은 포인터 무시
+          ignoring: _eraserMode || _groupMode ||
+              (_paletteType != null &&
+                  !_isBackgroundType(_paletteType!) &&
+                  _isBackgroundType(item.type)),
           child: MouseRegion(
           cursor: _eraserMode
               ? SystemMouseCursors.none
@@ -679,7 +686,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
                 });
               }
             },
-            child: _ItemCard(
+            child: MapItemCard(
               item: item,
               isSelected: isSel,
               isDragging: isDrag,
@@ -725,10 +732,12 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
     // InteractiveViewer 자식의 localPosition은 이미 캔버스 좌표계
     final tapX = d.localPosition.dx / _cell;
     final tapY = d.localPosition.dy / _cell;
-    // 기존 아이템 위를 탭했으면 배치하지 않음 (아이템 탭 핸들러가 처리)
+    // 전경(차량 등) 배치 중이면 배경(도로·출입구)은 점유로 취급 안 함
+    final placingForeground = !_isBackgroundType(_paletteType!);
     if (_items.any((item) =>
         tapX >= item.col && tapX < item.col + item.w &&
-        tapY >= item.row && tapY < item.row + item.h)) {
+        tapY >= item.row && tapY < item.row + item.h &&
+        !(placingForeground && _isBackgroundType(item.type)))) {
       return;
     }
     final type = _paletteType!;
@@ -863,10 +872,12 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
     final r = (localPos.dy / _cell).floor().clamp(0, _rows - type.cellH);
     final key = '$c,$r';
     if (_paintedCells.contains(key)) return; // 이번 드래그에서 이미 배치
-    // 해당 셀 범위에 기존 아이템이 있으면 스킵
+    // 전경 배치 시 배경(도로 등)은 점유로 보지 않음
+    final placingFg = !_isBackgroundType(type);
     final occupied = _items.any((item) =>
         c < item.col + item.w && c + type.cellW > item.col &&
-        r < item.row + item.h && r + type.cellH > item.row);
+        r < item.row + item.h && r + type.cellH > item.row &&
+        !(placingFg && _isBackgroundType(item.type)));
     if (occupied) return;
     setState(() {
       _paintedCells.add(key);
@@ -1392,7 +1403,7 @@ class _OperationMapScreenState extends State<OperationMapScreen> {
 
 // ── Item Card Widget ────────────────────────────────────────
 
-class _ItemCard extends StatelessWidget {
+class MapItemCard extends StatelessWidget {
   final MapItem item;
   final bool isSelected;
   final bool isDragging;
@@ -1400,7 +1411,7 @@ class _ItemCard extends StatelessWidget {
   final bool erasing;
   final bool groupSelected;
 
-  const _ItemCard({
+  const MapItemCard({
     required this.item,
     required this.isSelected,
     required this.isDragging,
@@ -1522,9 +1533,9 @@ class _PaletteButton extends StatelessWidget {
 
 // ── Grid Painter ────────────────────────────────────────────
 
-class _GridPainter extends CustomPainter {
+class MapGridPainter extends CustomPainter {
   final double cell;
-  const _GridPainter({required this.cell});
+  const MapGridPainter({required this.cell});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1557,5 +1568,87 @@ class _GridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_GridPainter old) => false;
+  bool shouldRepaint(MapGridPainter old) => false;
+}
+
+// ── 대시보드 미리보기 위젯 ────────────────────────────────────
+
+class OperationMapPreview extends StatelessWidget {
+  const OperationMapPreview({super.key});
+
+  static const double _cell = 64.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _savedMapItems;
+    final cols = _savedMapCols;
+    final rows = _savedMapRows;
+
+    if (items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.map_outlined, size: 56, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              '작전도가 비어있습니다',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '메뉴 → 진압작전도에서 먼저 작성해주세요',
+              style:
+                  TextStyle(fontSize: 13, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final w = _cell * cols;
+    final h = _cell * rows;
+    final sorted = [...items]
+      ..sort((a, b) {
+        final ab = mapIsBackgroundType(a.type) ? 0 : 1;
+        final bb = mapIsBackgroundType(b.type) ? 0 : 1;
+        return ab.compareTo(bb);
+      });
+
+    return InteractiveViewer(
+      constrained: false,
+      boundaryMargin: const EdgeInsets.all(200),
+      minScale: 0.1,
+      maxScale: 4.0,
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: Stack(
+          children: [
+            CustomPaint(
+              size: Size(w, h),
+              painter: MapGridPainter(cell: _cell),
+            ),
+            ...sorted.map((item) => Positioned(
+                  left: item.col * _cell,
+                  top: item.row * _cell,
+                  width: item.w * _cell,
+                  height: item.h * _cell,
+                  child: IgnorePointer(
+                    child: MapItemCard(
+                      item: item,
+                      isSelected: false,
+                      isDragging: false,
+                      cell: _cell,
+                    ),
+                  ),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
 }

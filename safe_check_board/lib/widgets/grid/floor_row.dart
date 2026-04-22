@@ -4,13 +4,14 @@ import 'unit_cell.dart';
 
 class FloorRow extends StatefulWidget {
   final int floor;
-  final List<Unit> units;        // 이 층에 존재하는 유닛들
-  final int totalUnitSlots;      // 총 슬롯 수 (defaultUnits)
+  final List<Unit> units;
+  final int totalUnitSlots;
   final Unit? selectedUnit;
   final Set<int> selectedFloors;
   final bool isRooftop;
   final String? customLabel;
   final bool isHorizontal;
+  final List<Color> teamColors; // 진입 팀 색상 목록 (여러 대 동시 가능)
   final ValueChanged<Unit> onUnitTap;
   final VoidCallback onAllTap;
   final void Function(int floor, int unitIndex) onEmptyCellTap;
@@ -26,6 +27,7 @@ class FloorRow extends StatefulWidget {
     this.isRooftop = false,
     this.customLabel,
     this.isHorizontal = false,
+    this.teamColors = const [],
     required this.onUnitTap,
     required this.onAllTap,
     required this.onEmptyCellTap,
@@ -36,15 +38,21 @@ class FloorRow extends StatefulWidget {
   State<FloorRow> createState() => _FloorRowState();
 }
 
-class _FloorRowState extends State<FloorRow> {
+class _FloorRowState extends State<FloorRow>
+    with SingleTickerProviderStateMixin {
   bool _editingLabel = false;
   late TextEditingController _labelController;
+
+  AnimationController? _pulseCtrl;
+  Animation<double>? _pulseScale;
+  Animation<double>? _pulseOpacity;
 
   @override
   void initState() {
     super.initState();
     _labelController =
         TextEditingController(text: widget.customLabel ?? _defaultLabel);
+    if (widget.teamColors.isNotEmpty) _startAnimation();
   }
 
   @override
@@ -53,11 +61,37 @@ class _FloorRowState extends State<FloorRow> {
     if (!_editingLabel) {
       _labelController.text = widget.customLabel ?? _defaultLabel;
     }
+    if (widget.teamColors.isNotEmpty && _pulseCtrl == null) {
+      _startAnimation();
+    } else if (widget.teamColors.isEmpty && _pulseCtrl != null) {
+      _stopAnimation();
+    }
+  }
+
+  void _startAnimation() {
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+    _pulseScale = Tween<double>(begin: 0.88, end: 1.12).animate(
+      CurvedAnimation(parent: _pulseCtrl!, curve: Curves.easeInOut),
+    );
+    _pulseOpacity = Tween<double>(begin: 0.75, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseCtrl!, curve: Curves.easeInOut),
+    );
+  }
+
+  void _stopAnimation() {
+    _pulseCtrl?.dispose();
+    _pulseCtrl = null;
+    _pulseScale = null;
+    _pulseOpacity = null;
   }
 
   @override
   void dispose() {
     _labelController.dispose();
+    _pulseCtrl?.dispose();
     super.dispose();
   }
 
@@ -76,31 +110,60 @@ class _FloorRowState extends State<FloorRow> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 층 라벨 셀
           _buildFloorLabel(),
           const SizedBox(width: 3),
-          // ALL 버튼
           _buildAllButton(),
           const SizedBox(width: 3),
-          // 유닛 슬롯들 (span 지원)
           ..._buildUnitCells(),
+          // 소방관 아이콘 (진입 팀 있을 때만)
+          if (widget.teamColors.isNotEmpty &&
+              _pulseScale != null &&
+              _pulseOpacity != null) ...[
+            const SizedBox(width: 6),
+            AnimatedBuilder(
+              animation: _pulseCtrl!,
+              builder: (_, __) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: widget.teamColors.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final color = e.value;
+                  // 각 아이콘마다 위상 약간 다르게 (0.0 ~ 0.5 오프셋)
+                  final phase = (idx * 0.25).clamp(0.0, 0.75);
+                  final t = (((_pulseCtrl!.value + phase) % 1.0));
+                  final scale = 0.88 + (0.24 * (t < 0.5 ? t * 2 : (1 - t) * 2));
+                  final opacity = 0.75 + (0.25 * (t < 0.5 ? t * 2 : (1 - t) * 2));
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 3),
+                    child: Transform.scale(
+                      scale: scale,
+                      child: Opacity(
+                        opacity: opacity,
+                        child: _FirefighterIcon(color: color),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  /// span을 고려한 유닛 셀 목록 생성
   List<Widget> _buildUnitCells() {
     final cells = <Widget>[];
     int slotIdx = 1;
     while (slotIdx <= widget.totalUnitSlots) {
       final unit = widget.units.firstWhere(
         (u) => u.unitIndex == slotIdx,
-        orElse: () => Unit(id: '', floor: widget.floor, unitIndex: slotIdx, number: 0),
+        orElse: () =>
+            Unit(id: '', floor: widget.floor, unitIndex: slotIdx, number: 0),
       );
 
       if (unit.id.isNotEmpty) {
-        final span = unit.spanCount.clamp(1, widget.totalUnitSlots - slotIdx + 1);
+        final span =
+            unit.spanCount.clamp(1, widget.totalUnitSlots - slotIdx + 1);
         cells.add(SizedBox(
           width: span * 56.0,
           height: 42,
@@ -114,7 +177,7 @@ class _FloorRowState extends State<FloorRow> {
         ));
         slotIdx += span;
       } else {
-        final capturedSlot = slotIdx; // 클로저에 현재 값 고정
+        final capturedSlot = slotIdx;
         cells.add(SizedBox(
           width: 56,
           height: 42,
@@ -170,15 +233,16 @@ class _FloorRowState extends State<FloorRow> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: widget.isRooftop
-                      ? Colors.blueGrey.shade200
-                      : (_isFloorSelected
-                          ? Colors.orange.shade100
-                          : Colors.grey.shade100),
+                  ? Colors.blueGrey.shade200
+                  : (_isFloorSelected
+                      ? Colors.orange.shade100
+                      : Colors.grey.shade100),
               borderRadius: BorderRadius.circular(4),
               border: _isFloorSelected
                   ? Border.all(color: Colors.deepOrange, width: 1.5)
                   : widget.isRooftop
-                      ? Border.all(color: Colors.blueGrey.shade400, width: 1.5)
+                      ? Border.all(
+                          color: Colors.blueGrey.shade400, width: 1.5)
                       : null,
             ),
             child: Column(
@@ -190,8 +254,8 @@ class _FloorRowState extends State<FloorRow> {
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: widget.isRooftop
-                            ? Colors.blueGrey.shade900
-                            : Colors.black87,
+                        ? Colors.blueGrey.shade900
+                        : Colors.black87,
                   ),
                 ),
                 if (widget.isRooftop)
@@ -206,7 +270,6 @@ class _FloorRowState extends State<FloorRow> {
               ],
             ),
           ),
-          // 요구조자 경보 뱃지 (우상단)
           if (vulnerableCount > 0)
             Positioned(
               top: -6,
@@ -223,7 +286,9 @@ class _FloorRowState extends State<FloorRow> {
       width: 36,
       height: 42,
       child: Material(
-        color: _isFloorSelected ? Colors.orange.shade100 : Colors.grey.shade200,
+        color: _isFloorSelected
+            ? Colors.orange.shade100
+            : Colors.grey.shade200,
         borderRadius: BorderRadius.circular(4),
         child: InkWell(
           borderRadius: BorderRadius.circular(4),
@@ -241,6 +306,51 @@ class _FloorRowState extends State<FloorRow> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── 소방관 아이콘 ───────────────────────────────────────────
+
+class _FirefighterIcon extends StatelessWidget {
+  final Color color;
+
+  const _FirefighterIcon({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 36,
+      decoration: BoxDecoration(
+        color: color.withAlpha(25),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(180), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: color.withAlpha(80),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '🧑‍🚒',
+            style: TextStyle(
+              fontSize: 16,
+              shadows: [
+                Shadow(
+                  color: color.withAlpha(200),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

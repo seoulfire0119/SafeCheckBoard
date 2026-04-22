@@ -30,10 +30,23 @@ extension TeamStatusX on TeamStatus {
 }
 
 class TeamEntry {
+  // 빨주노초파남보
+  static const teamColors = [
+    Color(0xFFE53935),
+    Color(0xFFFF6D00),
+    Color(0xFFFFD600),
+    Color(0xFF43A047),
+    Color(0xFF1E88E5),
+    Color(0xFF3949AB),
+    Color(0xFF8E24AA),
+  ];
+
   final String id;
-  String name;
-  String? unit;  // 단대명 (예: 신수대)
-  String? note;  // 활동구역/비고 (예: 4층, B1~3층)
+  String name;          // 자동부여: "1착대", "2착대" ...
+  String? unit;         // 단대명 (예: 신수대)
+  String? note;         // 활동구역 표시 레이블 (파생값)
+  String? assignedFloorKey; // "buildingIdx_floor" (예: "0_3")
+  Color teamColor;
   TeamStatus status;
   DateTime? entryTime;
   Duration? pausedElapsed;
@@ -42,8 +55,10 @@ class TeamEntry {
   TeamEntry({
     required this.id,
     required this.name,
+    required this.teamColor,
     this.unit,
     this.note,
+    this.assignedFloorKey,
     this.status = TeamStatus.waiting,
     this.entryTime,
     this.pausedElapsed,

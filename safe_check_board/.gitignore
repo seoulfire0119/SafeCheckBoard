@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase 설정 (API 키 포함 — 공개 저장소에 올리지 않음)
+lib/firebase_options.dart
+.firebase/

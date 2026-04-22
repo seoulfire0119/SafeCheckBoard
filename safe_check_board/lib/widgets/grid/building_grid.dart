@@ -11,10 +11,12 @@ class _Segment {
 }
 
 class BuildingGrid extends StatelessWidget {
+  final int buildingIdx;
   final Building building;
   final BuildingState state;
   final Unit? selectedUnit;
   final Set<int> selectedFloors;
+  final Map<String, List<Color>> floorTeamColors;
   final ValueChanged<Unit> onUnitTap;
   final ValueChanged<int> onFloorAllTap;       // floor
   final void Function(int floor, int unitIndex) onEmptyCellTap;
@@ -23,10 +25,12 @@ class BuildingGrid extends StatelessWidget {
 
   const BuildingGrid({
     super.key,
+    required this.buildingIdx,
     required this.building,
     required this.state,
     required this.selectedUnit,
     required this.selectedFloors,
+    this.floorTeamColors = const <String, List<Color>>{},
     required this.onUnitTap,
     required this.onFloorAllTap,
     required this.onEmptyCellTap,
@@ -88,6 +92,7 @@ class BuildingGrid extends StatelessWidget {
                   isRooftop: floor == building.rooftopFloor,
                   customLabel: state.floorLabels[floor],
                   isHorizontal: building.isHorizontal,
+                  teamColors: floorTeamColors['${buildingIdx}_$floor'] ?? const [],
                   onUnitTap: onUnitTap,
                   onAllTap: () => onFloorAllTap(floor),
                   onEmptyCellTap: onEmptyCellTap,

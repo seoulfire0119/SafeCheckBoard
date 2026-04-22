@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'dart:html' as html;
 import '../models/briefing_record.dart';
 import '../services/briefing_service.dart';
+import 'incident_status_screen.dart';
+import 'disaster_response_screen.dart';
+import 'casualty_status_screen.dart';
 
 // ── 세션 내 저장 상태 ────────────────────────────────────────
 Map<String, dynamic> _savedBriefingDraft = {};
@@ -288,6 +291,180 @@ class _DisasterBriefingScreenState extends State<DisasterBriefingScreen>
     super.dispose();
   }
 
+  // ── 자동채우기 ─────────────────────────────────────────────
+
+  void _showAutoFillDialog() {
+    // 사용 가능한 소스 확인
+    final hasIncident = savedIncident.isNotEmpty;
+    final hasCasualty = savedCasualtyRows.any((r) => (r['status'] ?? '').isNotEmpty);
+    final hasTimeline = savedActionRows.any(
+        (r) => (r['time'] ?? '').isNotEmpty || (r['content'] ?? '').isNotEmpty);
+    final hasAgency = savedAgencyRows.any((r) => (r['agency'] ?? '').isNotEmpty);
+
+    if (!hasIncident && !hasCasualty && !hasTimeline && !hasAgency) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('자동으로 채울 수 있는 데이터가 없습니다.\n재난발생현황, 인명피해상황, 조치현황을 먼저 입력하세요.'),
+        backgroundColor: Colors.grey,
+        duration: Duration(seconds: 3),
+      ));
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.auto_fix_high, color: Color(0xFF1565C0)),
+          SizedBox(width: 8),
+          Text('자동채우기'),
+        ]),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('다른 화면에서 입력한 데이터로 브리핑 항목을 채웁니다.\n기존 입력값은 덮어쓰기됩니다.',
+                  style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const SizedBox(height: 12),
+              if (hasIncident) ...[
+                _autoFillChip(Icons.assignment_outlined, '재난발생현황',
+                    '발생일시, 장소, 원인 → 초동·보고서'),
+                const SizedBox(height: 6),
+              ],
+              if (hasCasualty) ...[
+                _autoFillChip(Icons.personal_injury_outlined, '인명피해상황',
+                    '사망·부상 집계 → 초동·보고서 인명피해'),
+                const SizedBox(height: 6),
+              ],
+              if (hasTimeline) ...[
+                _autoFillChip(Icons.access_time_filled, '시간대별 조치현황',
+                    '시간·조치사항 → 중간 상황일지·보고서 경과'),
+                const SizedBox(height: 6),
+              ],
+              if (hasAgency) ...[
+                _autoFillChip(Icons.groups_outlined, '유관기관 활동사항',
+                    '기관명·조치내용 → 중간 편성현황'),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('취소')),
+          FilledButton.icon(
+            icon: const Icon(Icons.auto_fix_high, size: 16),
+            label: const Text('채우기'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _applyAutoFill();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _autoFillChip(IconData icon, String title, String desc) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FF),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF90CAF9)),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 16, color: const Color(0xFF1565C0)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            Text(desc, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  void _applyAutoFill() {
+    int filled = 0;
+
+    // ── 재난발생현황 → 초동 + 보고서 ──
+    final inc = savedIncident;
+    if ((inc['date'] ?? '').isNotEmpty) { _f1Date.text = inc['date']!; filled++; }
+    if ((inc['location'] ?? '').isNotEmpty) { _f1Location.text = inc['location']!; filled++; }
+    if ((inc['cause'] ?? '').isNotEmpty) { _f3Cause.text = inc['cause']!; filled++; }
+
+    // 보고서 화재개요 조합
+    final overviewParts = <String>[];
+    if ((inc['date'] ?? '').isNotEmpty) overviewParts.add('발생일시: ${inc['date']}');
+    if ((inc['location'] ?? '').isNotEmpty) overviewParts.add('발생장소: ${inc['location']}');
+    if ((inc['target'] ?? '').isNotEmpty) overviewParts.add('대상물: ${inc['target']}');
+    if ((inc['floors'] ?? '').isNotEmpty || (inc['area'] ?? '').isNotEmpty) {
+      final struct = [
+        if ((inc['floors'] ?? '').isNotEmpty) '${inc['floors']}층',
+        if ((inc['area'] ?? '').isNotEmpty) '${inc['area']}㎡',
+      ].join(' / ');
+      overviewParts.add('건물구조: $struct');
+    }
+    if (overviewParts.isNotEmpty) {
+      _f3Overview.text = overviewParts.join('\n');
+      filled++;
+    }
+
+    // ── 인명피해상황 → 사망·부상 숫자 ──
+    final delayed = savedCasualtyRows
+        .where((r) => r['status'] == '지연환자').length;
+    final injured = savedCasualtyRows
+        .where((r) => ['긴급환자', '응급환자', '비응급환자'].contains(r['status'])).length;
+    if (delayed > 0 || injured > 0) {
+      _f1Dead.text = '$delayed'; _f3Dead.text = '$delayed';
+      _f1Injured.text = '$injured'; _f3Injured.text = '$injured';
+      filled++;
+    }
+
+    // ── 시간대별 조치현황 → 중간 상황일지 + 보고서 경과 ──
+    final actionEntries = savedActionRows
+        .where((r) => (r['time'] ?? '').isNotEmpty || (r['content'] ?? '').isNotEmpty)
+        .toList();
+    if (actionEntries.isNotEmpty) {
+      setState(() {
+        _f2Log
+          ..clear()
+          ..addAll(actionEntries.map(
+              (r) => _LogEntry(time: r['time'] ?? '', content: r['content'] ?? '')));
+        _f3Timeline
+          ..clear()
+          ..addAll(actionEntries.map(
+              (r) => _LogEntry(time: r['time'] ?? '', content: r['content'] ?? '')));
+      });
+      filled++;
+    }
+
+    // ── 유관기관 활동사항 → 중간 편성현황 ──
+    final agencyEntries =
+        savedAgencyRows.where((r) => (r['agency'] ?? '').isNotEmpty).toList();
+    if (agencyEntries.isNotEmpty) {
+      _f2Teams.text = agencyEntries.asMap().entries.map((e) {
+        final r = e.value;
+        final parts = ['${e.key + 1}. ${r['agency']}'];
+        if ((r['person'] ?? '').isNotEmpty) parts.add(r['person']!);
+        if ((r['arrive'] ?? '').isNotEmpty) parts.add('도착 ${r['arrive']}');
+        if ((r['action'] ?? '').isNotEmpty) parts.add(r['action']!);
+        return parts.join(' / ');
+      }).join('\n');
+      filled++;
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('$filled개 항목이 자동으로 채워졌습니다.'),
+      backgroundColor: const Color(0xFF1565C0),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
   // ── 복사 텍스트 생성 ────────────────────────────────────────
 
   String _buildCopyText() {
@@ -494,6 +671,11 @@ class _DisasterBriefingScreenState extends State<DisasterBriefingScreen>
         backgroundColor: const Color(0xFF0D1B2A),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_fix_high),
+            tooltip: '자동채우기',
+            onPressed: _showAutoFillDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.save_outlined),
             tooltip: _recordId == null ? '저장' : '덮어쓰기',
