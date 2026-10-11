@@ -6,8 +6,12 @@ const f = 'build/web/flutter_bootstrap.js';
 let c = fs.readFileSync(f, 'utf8');
 const call = "_flutter.loader.load({onEntrypointLoaded:async function(e){var h=document.getElementById('flutter_host');var a=await e.initializeEngine(h?{hostElement:h}:{});await a.runApp();}});";
 const re = /_flutter\.loader\.load\((\{[\s\S]*?\})?\);/;
-if (c.includes("getElementById('flutter_host')")) { console.log('이미 적용됨'); process.exit(0); }
-if (!re.test(c)) { console.error('flutter_bootstrap.js 에서 _flutter.loader.load(...) 를 찾지 못함'); process.exit(1); }
-c = c.replace(re, call);
+//  - main.dart.js 에 ?v= 를 붙인다 → 휴대폰에 1년 캐시된 옛 main.dart.js 대신 새 파일을 받음 (web/index.html 의 ?v= 와 같은 값)
+const mainJs = '"mainJsPath":"main.dart.js?v=20261011"';
+if (!c.includes(mainJs)) c = c.replace(/"mainJsPath":"main\.dart\.js[^"]*"/, mainJs);
+if (!c.includes("getElementById('flutter_host')")) {
+  if (!re.test(c)) { console.error('flutter_bootstrap.js 에서 _flutter.loader.load(...) 를 찾지 못함'); process.exit(1); }
+  c = c.replace(re, call);
+}
 fs.writeFileSync(f, c);
 console.log('완료');
