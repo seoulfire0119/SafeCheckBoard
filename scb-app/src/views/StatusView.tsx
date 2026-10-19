@@ -79,7 +79,9 @@ export function StatusView() {
                   d.personnelStats.push({ selfEvac: 0, rescued: 0, notFound: 0 });
                 },
                 '건물',
-                `건물 추가: ${b.name} (${b.startFloor}~${b.endFloor}${b.isHorizontal ? '구역' : '층'}, ${b.defaultUnits}칸)`,
+                b.isHorizontal && b.endFloor < 0
+                  ? `건물 추가: ${b.name} (지하주차장 B1~B${-b.startFloor}, ${b.defaultUnits}구역)`
+                  : `건물 추가: ${b.name} (${b.startFloor}~${b.endFloor}${b.isHorizontal ? '구역' : '층'}, ${b.defaultUnits}칸)`,
               );
             }}
           />

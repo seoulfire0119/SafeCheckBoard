@@ -75,6 +75,7 @@ function parseUnit(u: unknown): Unit {
     memoPinned: m.memoPinned === true,
     vulnerable: m.vulnerable === true,
     spanCount: Math.max(1, num(m.spanCount, 1)),
+    ...(str(m.label) ? { label: str(m.label) } : {}),
   };
 }
 

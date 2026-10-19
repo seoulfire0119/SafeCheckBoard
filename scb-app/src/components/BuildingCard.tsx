@@ -1,8 +1,8 @@
 import { useState, type CSSProperties } from 'react';
-import { Accessibility, Building2, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
+import { Accessibility, Building2, CarFront, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
-import { floorKey, floorLabel, floorsDescending, rooftopFloor, STATUS, unitLabel } from '../lib/building';
+import { floorKey, floorLabel, floorsDescending, isParking, rooftopFloor, STATUS, unitLabel } from '../lib/building';
 import { LEVEL, teamElapsed, teamLevel, teamMain, teamsByFloor, teamSub } from '../lib/teams';
 import { mmss } from '../lib/format';
 import { Modal } from './Modal';
@@ -53,12 +53,13 @@ export function BuildingCard(props: {
 
   const cols = b.defaultUnits;
   const gridStyle: CSSProperties = {
-    gridTemplateColumns: `minmax(46px,auto) 34px repeat(${cols}, minmax(42px, 1fr)) minmax(0, auto)`,
+    gridTemplateColumns: `minmax(46px,auto) 34px repeat(${cols}, minmax(62px, 1fr)) minmax(0, auto)`,
   };
-  const minWidth = 46 + 34 + cols * 46 + 90;
+  // 호수(1501호)가 잘리지 않을 만큼은 넓게 — 건물이 많으면 옆으로 밀어서 봄
+  const minWidth = 46 + 34 + cols * 66 + 40;
 
   return (
-    <section className="bcard" style={{ minWidth: Math.min(minWidth, 900), flexGrow: cols + 3 }}>
+    <section className="bcard" style={{ minWidth: Math.min(minWidth, 900), flexGrow: cols + 3, flexShrink: 0 }}>
       <div className="pboard">
         {STAT_FIELDS.map((s) => (
           <button key={s.key} className="pstat" onClick={() => setEditStat(s.key)}>
@@ -68,11 +69,11 @@ export function BuildingCard(props: {
         ))}
       </div>
       <div className="bhead">
-        <Building2 size={18} className="ic-brand" />
+        {isParking(b) ? <CarFront size={18} className="ic-brand" /> : <Building2 size={18} className="ic-brand" />}
         <b className="bname">{b.name}</b>
         <small className="bmeta-txt">
           {floorsDescending(b).length}
-          {b.isHorizontal ? '구역' : '층'} · {state.units.length}칸
+          {b.isHorizontal && !isParking(b) ? '구역' : '층'} · {state.units.length}칸
         </small>
         <span className="grow" />
         {props.canAdd && (
@@ -291,9 +292,11 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
       onClick={props.onClick}
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
-      <span className="unum">{unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
+      <span className="unum">
+        {u.vulnerable && <Accessibility size={15} strokeWidth={3} className="uv" aria-label="피난약자" />}
+        <span className="unum-txt">{u.label || unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
+      </span>
       {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
-      {u.vulnerable && <Accessibility size={15} strokeWidth={2.6} className="uv" aria-label="피난약자" />}
       {!u.memoPinned && u.memo && <StickyNote size={12} className="um" aria-label="메모 있음" />}
       {props.origin && <Flame size={16} className="uorigin" aria-label="화점" />}
     </button>

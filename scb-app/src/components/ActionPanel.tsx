@@ -1,9 +1,9 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Accessibility, ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Settings2, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
+import { Accessibility, ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Pencil, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
 import type { Building, BuildingState, Unit, UnitStatus } from '../types';
 import { STATUS_ICON } from './icons';
 import { useSession } from '../session-context';
-import { floorLabel, floorsDescending, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
+import { baseFloorLabel, baseUnitLabel, floorLabel, floorsDescending, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
 import { hhmm } from '../lib/format';
 import type { Selection } from './BuildingCard';
 
@@ -17,11 +17,9 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
   const multiUnits = sel?.units?.length && st ? st.units.filter((u) => sel.units!.includes(u.id)) : null;
 
   const [memo, setMemo] = useState(unit?.memo ?? '');
-  const [floorName, setFloorName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  useEffect(() => setRenaming(false), [sel?.unitId, sel?.floor, sel?.b]);
   useEffect(() => setMemo(unit?.memo ?? ''), [unit?.id, unit?.memo]);
-  useEffect(() => {
-    if (b && st && sel?.floor != null) setFloorName(st.floorLabels[String(sel.floor)] ?? '');
-  }, [b, st, sel?.floor]);
 
   if (!sel || !b || !st || (!unit && !floorUnits && !multiUnits?.length)) {
     const recent = logs.slice(-12).reverse();
@@ -85,14 +83,39 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
         <div className="ap-head">
           <div>
             <small>{b.name}</small>
-            <h3>
-              {floorLabel(b, st, unit.floor)} · {name.split(' ').pop()}
+            <h3 className="with-edit">
+              {floorLabel(b, st, unit.floor)} · {unit.label || baseUnitLabel(b, unit)}
+              <button className={`icon-btn small ${renaming ? 'on' : ''}`} onClick={() => setRenaming(!renaming)} aria-label="호실 이름 바꾸기">
+                <Pencil size={16} />
+              </button>
             </h3>
+            {unit.label && <small>원래 {baseUnitLabel(b, unit)}</small>}
           </div>
           <button className="icon-btn" onClick={onClear} aria-label="선택 해제">
             <X size={20} />
           </button>
         </div>
+        {renaming && (
+          <RenameBox
+            current={unit.label ?? ''}
+            original={baseUnitLabel(b, unit)}
+            presets={UNIT_PRESETS}
+            onSave={(v) => {
+              setRenaming(false);
+              if (v === (unit.label ?? '')) return;
+              act(
+                (d) => {
+                  const u = d.states[bi].units.find((x) => x.id === unit.id);
+                  if (!u) return;
+                  if (v) u.label = v;
+                  else delete u.label;
+                },
+                '건물',
+                `${b.name} ${floorLabel(b, st, unit.floor)} ${unit.label || baseUnitLabel(b, unit)} 이름 → ${v || baseUnitLabel(b, unit)}`,
+              );
+            }}
+          />
+        )}
 
         <h4>상태</h4>
         <div className="status-btns">
@@ -268,7 +291,12 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
       <div className="ap-head">
         <div>
           <small>{b.name}</small>
-          <h3>{fl} 전체</h3>
+          <h3 className="with-edit">
+            {fl} 전체
+            <button className={`icon-btn small ${renaming ? 'on' : ''}`} onClick={() => setRenaming(!renaming)} aria-label="층 이름 바꾸기">
+              <Pencil size={16} />
+            </button>
+          </h3>
           <small>
             {floorUnits!.length}칸 · {counts.map(([s, n]) => `${STATUS[s].label} ${n}`).join(' · ')}
           </small>
@@ -277,6 +305,26 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
           <X size={20} />
         </button>
       </div>
+      {renaming && (
+        <RenameBox
+          current={st.floorLabels[String(f)] ?? ''}
+          original={baseFloorLabel(b, f)}
+          presets={FLOOR_PRESETS}
+          onSave={(v) => {
+            setRenaming(false);
+            const k = String(f);
+            if (v === (st.floorLabels[k] ?? '')) return;
+            act(
+              (d) => {
+                if (v) d.states[bi].floorLabels[k] = v;
+                else delete d.states[bi].floorLabels[k];
+              },
+              '건물',
+              `${b.name} ${fl} 층 이름 → ${v || baseFloorLabel(b, f)}`,
+            );
+          }}
+        />
+      )}
       <h4>층 전체 상태 바꾸기</h4>
       <div className="status-btns">
         {STATUS_ORDER.map((s) => (
@@ -328,28 +376,8 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
       )}
       <details className="more">
         <summary>
-          <Settings2 size={16} /> 층 설정 (이름 바꾸기 · 숨기기)
+          <EyeOff size={16} /> 층 숨기기
         </summary>
-        <h4>층 이름</h4>
-        <div className="row-btns">
-          <input value={floorName} placeholder={fl} onChange={(e) => setFloorName(e.target.value)} />
-          <button
-            className="btn small"
-            onClick={() =>
-              act(
-                (d) => {
-                  const k = String(f);
-                  if (floorName.trim()) d.states[bi].floorLabels[k] = floorName.trim();
-                  else delete d.states[bi].floorLabels[k];
-                },
-                '건물',
-                `${b.name} ${fl} 이름 변경 → ${floorName.trim() || '(기본)'}`,
-              )
-            }
-          >
-            저장
-          </button>
-        </div>
         <p className="hint">층 숨기기: 상관없는 층을 접어서 보드를 짧게 만듭니다. 접힌 줄을 누르면 다시 보입니다.</p>
         <button
           className="btn small"
@@ -433,6 +461,42 @@ function MultiPanel({ bi, b, st, units, onClear }: { bi: number; b: Building; st
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+const FLOOR_PRESETS = ['L', 'M', 'LB', 'G', 'P', '로비', '필로티', '주차장', '기계실층', '중층'];
+const UNIT_PRESETS = ['주차장', '기계실', '전기실', '관리실', '상가', '창고', '계단실', '승강기', '공용부', '빈 세대'];
+
+/** 이름 바꾸기 — 버튼으로 고르거나 직접 쓰기, 비우면 원래 이름 */
+function RenameBox(props: { current: string; original: string; presets: string[]; onSave: (v: string) => void }) {
+  const [v, setV] = useState(props.current);
+  return (
+    <div className="rename-box">
+      <div className="row-btns">
+        <input
+          value={v}
+          autoFocus
+          placeholder={`원래 이름: ${props.original}`}
+          onChange={(e) => setV(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && props.onSave(v.trim())}
+        />
+        <button className="btn small primary" onClick={() => props.onSave(v.trim())}>
+          저장
+        </button>
+      </div>
+      <div className="chips">
+        {props.presets.map((p) => (
+          <button key={p} className="chip" onClick={() => props.onSave(p)}>
+            {p}
+          </button>
+        ))}
+      </div>
+      {props.current && (
+        <button className="btn tiny ghost" onClick={() => props.onSave('')}>
+          원래 이름({props.original})으로 되돌리기
+        </button>
+      )}
     </div>
   );
 }

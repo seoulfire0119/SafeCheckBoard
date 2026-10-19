@@ -10,6 +10,16 @@ export const STATUS: Record<UnitStatus, { label: string; color: string }> = {
 
 export const STATUS_ORDER: UnitStatus[] = ['unknown', 'confirmed', 'danger', 'fireFalseAlarm', 'resourceBase'];
 
+/** 지하주차장: 가로형이면서 지하층만 있음 (줄 = B1·B2, 칸 = A·B·C 구역) */
+export const isParking = (b: Building) => b.isHorizontal && b.endFloor < 0;
+
+/** 1 → A, 2 → B … 27 → AA */
+export function zoneLetter(n: number): string {
+  let s = '';
+  for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s;
+  return s;
+}
+
 export function rooftopFloor(b: Building): number | null {
   return b.isHorizontal ? null : b.endFloor + 1;
 }
@@ -60,16 +70,32 @@ export function createBuildingState(b: Building): BuildingState {
 export function floorLabel(b: Building, state: BuildingState | undefined, floor: number): string {
   const custom = state?.floorLabels[String(floor)];
   if (custom) return custom;
+  if (b.isHorizontal && floor < 0) return `B${Math.abs(floor)}`;
   if (b.isHorizontal) return `${floor}구역`;
   if (floor < 0) return `B${Math.abs(floor)}F`;
   return `${floor}F`;
 }
 
-export function unitLabel(b: Building, u: Unit): string {
+/** 원래 호수 (예: 301호, B101호, 옥상 1) */
+export function baseUnitLabel(b: Building, u: Unit): string {
+  if (b.isHorizontal && u.floor < 0) return `${zoneLetter(u.unitIndex)}구역`;
   if (b.isHorizontal) return `${u.floor}구역 ${u.unitIndex}번`;
   if (u.floor === rooftopFloor(b)) return `옥상 ${u.unitIndex}`;
   if (u.floor < 0) return `B${Math.abs(u.floor)}${String(u.unitIndex).padStart(2, '0')}호`;
   return `${u.number}호`;
+}
+
+/** 보이는 호실 이름 — 붙인 이름(주차장 등)이 있으면 그것 */
+export function unitLabel(b: Building, u: Unit): string {
+  return u.label || baseUnitLabel(b, u);
+}
+
+/** 원래 층 이름 (예: 3F, B1F, 2구역) */
+export function baseFloorLabel(b: Building, floor: number): string {
+  if (b.isHorizontal && floor < 0) return `B${Math.abs(floor)}`;
+  if (b.isHorizontal) return `${floor}구역`;
+  if (floor < 0) return `B${Math.abs(floor)}F`;
+  return `${floor}F`;
 }
 
 /** 로그용 전체 이름: "101동 3F 301호" */

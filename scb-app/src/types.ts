@@ -21,6 +21,7 @@ export interface Unit {
   memoPinned: boolean;
   vulnerable: boolean; // 피난약자
   spanCount: number; // 병합 칸 수
+  label?: string; // 사람이 붙인 이름 (예: 주차장, 기계실) — 없으면 호수
 }
 
 export interface BuildingState {

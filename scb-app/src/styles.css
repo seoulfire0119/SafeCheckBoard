@@ -2782,3 +2782,99 @@ a.ai-ladder-bar .ai-ladder-cta {
   border-color: #fca5a5;
   color: #991b1b;
 }
+
+/* 이름 바꾸기 */
+.with-edit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.icon-btn.small {
+  width: 32px;
+  height: 32px;
+  color: var(--ink-3);
+}
+.icon-btn.on {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.rename-box {
+  border: 1px solid var(--brand-line);
+  background: var(--brand-soft);
+  border-radius: var(--r);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.rename-box .row-btns {
+  width: 100%;
+}
+.rename-box .chip {
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+.unum {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 피난약자 아이콘: 칸 가운데, 호수 바로 앞에 크게 */
+.unum {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.unum-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ucell .uv,
+.ucell.vuln .uv {
+  position: static;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: #fef08a;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+  animation: vulnIcon 0.65s ease-in-out infinite alternate;
+}
+
+/* 피난약자 칸: 아이콘은 호수 바로 옆에 글자 크기로 */
+.ucell .unum .uv,
+.ucell.vuln .unum .uv {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.seg.big.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.pv-zone {
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.ucell .unum {
+  gap: 1px;
+}
+.ucell.vuln .unum {
+  font-size: 13px;
+  letter-spacing: -0.03em;
+}
+.ucell .unum .uv,
+.ucell.vuln .unum .uv {
+  width: 1.05em;
+  height: 1.05em;
+}
+.ucell {
+  padding: 2px 1px;
+}
