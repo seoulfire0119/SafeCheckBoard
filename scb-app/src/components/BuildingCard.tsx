@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { Accessibility, Building2, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, X } from 'lucide-react';
+import { Accessibility, Building2, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending, rooftopFloor, STATUS, unitLabel } from '../lib/building';
@@ -179,7 +179,12 @@ export function BuildingCard(props: {
                 >
                   {floorFire && <Flame size={14} className="fire-dot" />}
                   {floorLabel(b, state, f)}
-                  {vuln > 0 && <span className="vbadge">약자 {vuln}</span>}
+                  {vuln > 0 && (
+                    <span className="vbadge" title={`피난약자 ${vuln}칸`}>
+                      <TriangleAlert size={11} strokeWidth={2.8} />
+                      {vuln}
+                    </span>
+                  )}
                 </button>
                 <button className={`allbtn ${floorSel ? 'sel' : ''}`} onClick={() => props.onSelect(floorSel ? null : { b: idx, unitId: null, floor: f })}>
                   ALL
@@ -281,14 +286,14 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
   const st = STATUS[u.status];
   return (
     <button
-      className={`ucell st-${u.status} ${props.selected ? 'sel' : ''} ${props.multi ? 'msel' : ''} ${props.origin ? 'origin' : ''}`}
+      className={`ucell st-${u.status} ${props.selected ? 'sel' : ''} ${props.multi ? 'msel' : ''} ${props.origin ? 'origin' : ''} ${u.vulnerable ? 'vuln' : ''}`}
       style={{ gridColumn: `span ${props.span}`, background: u.status === 'unknown' ? undefined : st.color }}
       onClick={props.onClick}
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
       <span className="unum">{unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
-      {u.vulnerable && <Accessibility size={13} className="uv" aria-label="피난약자" />}
+      {u.vulnerable && <Accessibility size={15} strokeWidth={2.6} className="uv" aria-label="피난약자" />}
       {!u.memoPinned && u.memo && <StickyNote size={12} className="um" aria-label="메모 있음" />}
       {props.origin && <Flame size={16} className="uorigin" aria-label="화점" />}
     </button>
