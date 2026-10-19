@@ -1,0 +1,749 @@
+import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import type { MapDoc, MapItem, MapLine, SessionData, Team } from '../types';
+import { useNow, useSession } from '../session-context';
+import { EMPTY_MAP, saveMap, subscribeMap } from '../lib/session';
+import { compressImage, MAP_CATS, MAP_COLORS, MAP_TYPES } from '../lib/mapTypes';
+import { floorLabel, floorsDescending, parseFloorKey, unitLabel } from '../lib/building';
+import { LEVEL, teamElapsed, teamLevel, teamPlace, teamTitle } from '../lib/teams';
+import { escapeHtml, mmss, uid } from '../lib/format';
+import { printHtml } from '../lib/exporter';
+
+const W = 1600;
+type Mode = { kind: 'select' } | { kind: 'place'; type: string; teamId?: string } | { kind: 'draw'; line: MapLine['kind'] };
+
+type Drag =
+  | { kind: 'pan'; sx: number; sy: number; cx: number; cy: number; scale: number }
+  | { kind: 'move'; id: string; dx: number; dy: number; moved: boolean }
+  | { kind: 'resize'; id: string }
+  | { kind: 'draw'; line: MapLine }
+  | null;
+
+const sizeOf = (it: MapItem) => ({ w: it.w ?? MAP_TYPES[it.type]?.w ?? 80, h: it.h ?? MAP_TYPES[it.type]?.h ?? 42 });
+
+export function MapView() {
+  const { code, data, log, toast } = useSession();
+  const now = useNow();
+  const [map, setMap] = useState<MapDoc>(EMPTY_MAP);
+  const [loaded, setLoaded] = useState(false);
+  const [mode, setMode] = useState<Mode>({ kind: 'select' });
+  const [selId, setSelId] = useState<string | null>(null);
+  const [bgDim, setBgDim] = useState(0.85);
+  const [grid, setGrid] = useState(true);
+  const [palette, setPalette] = useState(() => window.innerWidth > 900);
+  // 확대(zoom)와 보는 위치(cx, cy = 화면 가운데 좌표)
+  const [cam, setCam] = useState({ z: 1, cx: W / 2, cy: 500 });
+  const [busy, setBusy] = useState(false);
+  const drag = useRef<Drag>(null);
+  const [draft, setDraft] = useState<MapLine | null>(null);
+  const mapRef = useRef(map);
+  mapRef.current = map;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(
+    () =>
+      subscribeMap(
+        code,
+        (m) => {
+          setLoaded(true);
+          // 끄는 중에는 내 화면 위치를 유지 (놓으면 저장되고 다시 맞춰진다)
+          if (!drag.current) setMap(m);
+        },
+        (e) => toast(`작전도 불러오기 실패: ${e.message}`, 'error'),
+      ),
+    [code, toast],
+  );
+
+  const H = map.bg ? Math.round((W * map.bgH) / map.bgW) : 1000;
+  const vw = W / cam.z;
+  const vh = H / cam.z;
+  const clampCam = (c: { z: number; cx: number; cy: number }) => {
+    const z = Math.max(1, Math.min(4, c.z));
+    const hw = W / z / 2;
+    const hh = H / z / 2;
+    return { z, cx: Math.max(hw, Math.min(W - hw, c.cx)), cy: Math.max(hh, Math.min(H - hh, c.cy)) };
+  };
+  const view = clampCam(cam);
+  const zoomBy = (f: number) => setCam((c) => clampCam({ ...c, z: c.z * f }));
+
+  const persist = useCallback(
+    (patch: Partial<MapDoc>) => saveMap(code, patch).catch((e: Error) => toast(`작전도 저장 실패: ${e.message}`, 'error')),
+    [code, toast],
+  );
+
+  const setItems = (items: MapItem[], save = true) => {
+    setMap((m) => ({ ...m, items }));
+    if (save) persist({ items });
+  };
+
+  const toSvg = (e: { clientX: number; clientY: number }) => {
+    const svg = svgRef.current!;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: Math.max(0, Math.min(W, p.x)), y: Math.max(0, Math.min(H, p.y)) };
+  };
+
+  const typeLabel = (it: MapItem) => it.label || MAP_TYPES[it.type]?.label || it.type;
+
+  // ── 포인터 ──
+  const onDown = (e: RPointerEvent<SVGSVGElement>) => {
+    const p = toSvg(e);
+    if (mode.kind === 'place') {
+      const t = MAP_TYPES[mode.type];
+      const team = mode.teamId ? data.teams.find((x) => x.id === mode.teamId) : undefined;
+      const it: MapItem = {
+        id: uid(),
+        type: mode.type,
+        x: Math.round(p.x),
+        y: Math.round(p.y),
+        ...(mode.teamId ? { teamId: mode.teamId, color: team?.color } : {}),
+        ...(mode.type === 'text' ? { label: '메모' } : {}),
+      };
+      setItems([...map.items, it]);
+      setSelId(it.id);
+      setMode({ kind: 'select' });
+      log('작전도', `${team ? teamTitle(team) : t.label} 배치`);
+      return;
+    }
+    if (mode.kind === 'draw') {
+      const line: MapLine = {
+        id: uid(),
+        kind: mode.line,
+        points: [Math.round(p.x), Math.round(p.y)],
+        color: mode.line === 'hose' ? '#1565c0' : mode.line === 'route' ? '#d50000' : '#263238',
+      };
+      drag.current = { kind: 'draw', line };
+      setDraft(line);
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
+    const el = (e.target as Element).closest('[data-id]') as HTMLElement | null;
+    const id = el?.dataset.id ?? null;
+    const role = el?.dataset.role;
+    setSelId(id);
+    if (!id) {
+      // 빈 곳을 끌면 화면 이동 (확대했을 때)
+      if (view.z > 1) {
+        const r = svgRef.current!.getBoundingClientRect();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { kind: 'pan', sx: e.clientX, sy: e.clientY, cx: view.cx, cy: view.cy, scale: Math.max(vw / r.width, vh / r.height) };
+      }
+      return;
+    }
+    const it = map.items.find((x) => x.id === id);
+    if (!it) return; // 선(line) 선택
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = role === 'resize' ? { kind: 'resize', id } : { kind: 'move', id, dx: p.x - it.x, dy: p.y - it.y, moved: false };
+  };
+
+  const onMove = (e: RPointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d) return;
+    if (d.kind === 'pan') {
+      setCam(clampCam({ z: view.z, cx: d.cx - (e.clientX - d.sx) * d.scale, cy: d.cy - (e.clientY - d.sy) * d.scale }));
+      return;
+    }
+    const p = toSvg(e);
+    if (d.kind === 'draw') {
+      const pts = d.line.points;
+      const lx = pts[pts.length - 2];
+      const ly = pts[pts.length - 1];
+      if (Math.hypot(p.x - lx, p.y - ly) < 14) return;
+      d.line = { ...d.line, points: [...pts, Math.round(p.x), Math.round(p.y)] };
+      setDraft(d.line);
+      return;
+    }
+    setMap((m) => ({
+      ...m,
+      items: m.items.map((it) => {
+        if (it.id !== d.id) return it;
+        if (d.kind === 'move') {
+          d.moved = true;
+          return { ...it, x: Math.round(p.x - d.dx), y: Math.round(p.y - d.dy) };
+        }
+        const w = Math.max(40, Math.round((p.x - it.x) * 2));
+        const h = Math.max(30, Math.round((p.y - it.y) * 2));
+        return { ...it, w, h };
+      }),
+    }));
+  };
+
+  const onUp = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d || d.kind === 'pan') return;
+    if (d.kind === 'draw') {
+      setDraft(null);
+      if (d.line.points.length >= 4) {
+        const lines = [...map.lines, d.line];
+        setMap((m) => ({ ...m, lines }));
+        persist({ lines });
+        log('작전도', `${d.line.kind === 'hose' ? '수관' : d.line.kind === 'route' ? '진입경로' : '선'} 그리기`);
+      }
+    } else if (d.kind === 'resize' || d.moved) {
+      persist({ items: mapRef.current.items });
+    }
+  };
+
+  const sel = map.items.find((x) => x.id === selId) ?? null;
+  const selLine = map.lines.find((x) => x.id === selId) ?? null;
+
+  const removeSelected = () => {
+    if (sel) {
+      setItems(map.items.filter((x) => x.id !== sel.id));
+      const team = sel.teamId ? data.teams.find((t) => t.id === sel.teamId) : undefined;
+      log('작전도', `${team ? teamTitle(team) : typeLabel(sel)} 삭제`);
+    } else if (selLine) {
+      const lines = map.lines.filter((x) => x.id !== selLine.id);
+      setMap((m) => ({ ...m, lines }));
+      persist({ lines });
+      log('작전도', `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
+    }
+    setSelId(null);
+  };
+
+  const patchSel = (patch: Partial<MapItem>) => sel && setItems(map.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)));
+
+  const uploadBg = async (f: File) => {
+    setBusy(true);
+    try {
+      const { url, w, h } = await compressImage(f);
+      // 배경 비율이 바뀌면 기존 표시물 위치를 새 높이에 맞춰 늘린다
+      const newH = Math.round((W * h) / w);
+      const ratio = newH / H;
+      const items = map.items.map((it) => ({ ...it, y: Math.round(it.y * ratio) }));
+      const lines = map.lines.map((l) => ({ ...l, points: l.points.map((v, i) => (i % 2 ? Math.round(v * ratio) : v)) }));
+      setMap({ ...map, bg: url, bgW: w, bgH: h, items, lines });
+      await saveMap(code, { bg: url, bgW: w, bgH: h, items, lines });
+      log('작전도', `배경 이미지 등록 (${f.name})`);
+    } catch (e) {
+      toast(`배경 등록 실패: ${(e as Error).message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runAuto = () => {
+    const { items, summary } = autoLayout(map.items, data, H);
+    setItems(items);
+    log('작전도', `자동 배치 — ${summary}`);
+    toast(`자동 배치: ${summary}`);
+  };
+
+  const print = () => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.querySelectorAll('.no-print').forEach((n) => n.remove());
+    clone.setAttribute('width', '100%');
+    clone.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    printHtml(
+      '진압작전도',
+      `<h1>진압작전도</h1><div class="meta">${escapeHtml(data.title || code)} · ${new Date().toLocaleString('ko-KR')}</div>${clone.outerHTML}${teamLegendHtml(data, now)}`,
+    );
+  };
+
+  const placedTeam = new Set(map.items.filter((i) => i.teamId).map((i) => i.teamId!));
+
+  return (
+    <div className="map-view">
+      <div className="map-toolbar">
+        <button className={`btn small ${palette ? 'on' : ''}`} onClick={() => setPalette(!palette)}>
+          ☰ 표시물
+        </button>
+        <span className="sep" />
+        <button className={`btn small ${mode.kind === 'select' ? 'on' : ''}`} onClick={() => setMode({ kind: 'select' })}>
+          ✋ 선택·이동
+        </button>
+        <button
+          className={`btn small ${mode.kind === 'draw' && mode.line === 'route' ? 'on' : ''}`}
+          onClick={() => setMode({ kind: 'draw', line: 'route' })}
+        >
+          ➰ 진입경로
+        </button>
+        <button
+          className={`btn small ${mode.kind === 'draw' && mode.line === 'hose' ? 'on' : ''}`}
+          onClick={() => setMode({ kind: 'draw', line: 'hose' })}
+        >
+          〰 수관
+        </button>
+        <span className="sep" />
+        <button className="btn small primary" onClick={runAuto} title="건물·화점·진입대를 현황판 정보대로 자동으로 놓습니다">
+          ✨ 자동 배치
+        </button>
+        <button className="btn small" disabled={busy} onClick={() => fileRef.current?.click()}>
+          🖼 {busy ? '올리는 중…' : map.bg ? '배경 바꾸기' : '도면·지도 올리기'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) uploadBg(f);
+          }}
+        />
+        {map.bg && (
+          <>
+            <label className="dim">
+              흐리게
+              <input type="range" min={0.2} max={1} step={0.05} value={bgDim} onChange={(e) => setBgDim(Number(e.target.value))} />
+            </label>
+            <button
+              className="btn small ghost"
+              onClick={() => {
+                setMap({ ...map, bg: null });
+                persist({ bg: null });
+                log('작전도', '배경 이미지 삭제');
+              }}
+            >
+              배경 지우기
+            </button>
+          </>
+        )}
+        <label className="check small">
+          <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /> 격자
+        </label>
+        <span className="grow" />
+        <div className="zoom">
+          <button className="btn small" onClick={() => zoomBy(1 / 1.4)} aria-label="축소">
+            −
+          </button>
+          <span>{Math.round(view.z * 100)}%</span>
+          <button className="btn small" onClick={() => zoomBy(1.4)} aria-label="확대">
+            +
+          </button>
+          <button className="btn small ghost" onClick={() => setCam({ z: 1, cx: W / 2, cy: H / 2 })}>
+            전체
+          </button>
+        </div>
+        <button className="btn small" onClick={print}>
+          🖨 인쇄
+        </button>
+      </div>
+
+      <div className="map-body">
+        {palette && (
+          <aside className="palette">
+            <h4>진입대</h4>
+            <div className="pal-grid">
+              {data.teams.map((t) => (
+                <button
+                  key={t.id}
+                  className={`pal team ${mode.kind === 'place' && mode.teamId === t.id ? 'on' : ''}`}
+                  style={{ borderColor: t.color }}
+                  disabled={placedTeam.has(t.id)}
+                  onClick={() => setMode({ kind: 'place', type: 'team', teamId: t.id })}
+                  title={placedTeam.has(t.id) ? '이미 배치됨' : `${teamTitle(t)} 놓기`}
+                >
+                  <span className="pdot" style={{ background: t.color }} />
+                  {t.name}
+                  {placedTeam.has(t.id) && <small>✓</small>}
+                </button>
+              ))}
+            </div>
+            {MAP_CATS.map((c) => (
+              <div key={c.label}>
+                <h4>{c.label}</h4>
+                <div className="pal-grid">
+                  {c.types.map((k) => (
+                    <button
+                      key={k}
+                      className={`pal ${mode.kind === 'place' && mode.type === k && !mode.teamId ? 'on' : ''}`}
+                      onClick={() => setMode({ kind: 'place', type: k })}
+                    >
+                      <span>{MAP_TYPES[k].icon}</span>
+                      {MAP_TYPES[k].short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </aside>
+        )}
+
+        <div className="canvas-wrap">
+          {mode.kind !== 'select' && (
+            <div className="mode-hint">
+              {mode.kind === 'place'
+                ? `놓을 곳을 누르세요 — ${mode.teamId ? data.teams.find((t) => t.id === mode.teamId)?.name : MAP_TYPES[mode.type].label}`
+                : `손가락(마우스)으로 그리세요 — ${mode.line === 'hose' ? '수관' : '진입경로'}`}
+              <button className="btn tiny" onClick={() => setMode({ kind: 'select' })}>
+                취소
+              </button>
+            </div>
+          )}
+          {!loaded && <div className="mode-hint">작전도 불러오는 중…</div>}
+          <svg
+            ref={svgRef}
+            className={`map-svg mode-${mode.kind}`}
+            viewBox={`${view.cx - vw / 2} ${view.cy - vh / 2} ${vw} ${vh}`}
+            preserveAspectRatio="xMidYMid meet"
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            onWheel={(e) => {
+              if (!e.ctrlKey && !e.metaKey && Math.abs(e.deltaY) < 40) return;
+              const p = toSvg(e);
+              setCam((c) => {
+                const z = Math.max(1, Math.min(4, c.z * (e.deltaY < 0 ? 1.2 : 1 / 1.2)));
+                // 마우스가 가리키는 곳을 중심으로 확대
+                return clampCam({ z, cx: p.x + (c.cx - p.x) * (c.z / z), cy: p.y + (c.cy - p.y) * (c.z / z) });
+              });
+            }}
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <marker id="arrow-red" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#d50000" />
+              </marker>
+              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M40 0H0V40" fill="none" stroke="#cfd8dc" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect x={0} y={0} width={W} height={H} fill="#fff" />
+            {map.bg && <image href={map.bg} x={0} y={0} width={W} height={H} opacity={bgDim} preserveAspectRatio="none" />}
+            {grid && <rect className="no-print" x={0} y={0} width={W} height={H} fill="url(#grid)" opacity={map.bg ? 0.35 : 1} />}
+
+            {/* 건물·도로 같은 큰 것을 먼저 그려서 차량이 위에 오게 */}
+            {[...map.items]
+              .sort((a, b) => zOrder(a) - zOrder(b))
+              .map((it) => (
+                <ItemShape key={it.id} it={it} data={data} now={now} selected={selId === it.id} />
+              ))}
+            {[...map.lines, ...(draft ? [draft] : [])].map((l) => (
+              <polyline
+                key={l.id}
+                data-id={l.id}
+                points={l.points.join(' ')}
+                fill="none"
+                stroke={l.color}
+                strokeWidth={l.kind === 'hose' ? 7 : 6}
+                strokeDasharray={l.kind === 'hose' ? '16 8' : undefined}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                markerEnd={l.kind === 'route' ? 'url(#arrow-red)' : undefined}
+                opacity={selId === l.id ? 0.6 : 0.9}
+              />
+            ))}
+          </svg>
+          {map.items.length === 0 && map.lines.length === 0 && loaded && (
+            <div className="map-empty">
+              <p>
+                <b>✨ 자동 배치</b>를 누르면 현황판의 건물·화점·진입대가 바로 놓입니다.
+              </p>
+              <p className="hint">도면이나 네이버지도 캡처 사진을 [도면·지도 올리기]로 넣으면 그 위에 표시됩니다.</p>
+            </div>
+          )}
+        </div>
+
+        {(sel || selLine) && (
+          <aside className="map-inspector">
+            {sel && <Inspector it={sel} data={data} now={now} onPatch={patchSel} />}
+            {selLine && <p>{selLine.kind === 'hose' ? '수관' : '진입경로'} 선택됨</p>}
+            <button className="btn danger small block" onClick={removeSelected}>
+              🗑 삭제
+            </button>
+            <button className="btn ghost small block" onClick={() => setSelId(null)}>
+              닫기
+            </button>
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const zOrder = (it: MapItem) => (it.type === 'road' ? 0 : it.type === 'building' ? 1 : it.type === 'fire' ? 3 : it.type === 'team' ? 4 : 2);
+
+function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData; now: number; selected: boolean }) {
+  const t = MAP_TYPES[it.type] ?? MAP_TYPES.text;
+  const { w, h } = sizeOf(it);
+  const color = it.color ?? t.color;
+  const x = it.x - w / 2;
+  const y = it.y - h / 2;
+  const selRect = selected && (
+    <rect className="no-print" x={x - 6} y={y - 6} width={w + 12} height={h + 12} rx={8} fill="none" stroke="#2962ff" strokeWidth={3} strokeDasharray="8 5" />
+  );
+
+  if (it.type === 'building' || it.type === 'road') {
+    // 현황판 건물과 이름이 같으면 층 구분선을 그려서 화점·진입대 층이 보이게 한다
+    const bi = it.type === 'building' ? data.buildings.findIndex((b) => b.name === it.label) : -1;
+    const floors = bi >= 0 ? floorsDescending(data.buildings[bi]) : [];
+    const band = floors.length ? (h - 40) / floors.length : 0;
+    const fireFloor = data.fireOrigin?.buildingIdx === bi ? data.fireOrigin.floor : null;
+    const teamFloors = new Map<number, string>();
+    for (const t of data.teams) {
+      const p = t.status !== 'waiting' ? parseFloorKey(t.floorKey) : null;
+      if (p && p.b === bi && !teamFloors.has(p.f)) teamFloors.set(p.f, t.color);
+    }
+    return (
+      <g data-id={it.id}>
+        <rect x={x} y={y} width={w} height={h} rx={4} fill={color} fillOpacity={it.type === 'road' ? 0.55 : 0.18} stroke={color} strokeWidth={3} />
+        {floors.map((f, i) => {
+          const fy = y + 34 + i * band;
+          const hot = f === fireFloor;
+          const tc = teamFloors.get(f);
+          return (
+            <g key={f} pointerEvents="none">
+              {(hot || tc) && <rect x={x + 2} y={fy} width={w - 4} height={band} fill={hot ? '#ff1744' : tc} fillOpacity={hot ? 0.28 : 0.16} />}
+              {i > 0 && <line x1={x} y1={fy} x2={x + w} y2={fy} stroke={color} strokeOpacity={0.35} strokeWidth={1} />}
+              {band >= 11 && (
+                <text x={x + 6} y={fy + band / 2 + 4} fontSize={Math.min(13, band - 2)} fill="#37474f" fontWeight={hot || tc ? 800 : 500}>
+                  {floorLabel(data.buildings[bi], data.states[bi], f)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {it.type === 'road' && <line x1={x + 10} y1={it.y} x2={x + w - 10} y2={it.y} stroke="#fff" strokeWidth={3} strokeDasharray="18 12" />}
+        <text x={x + 10} y={y + 26} fontSize={22} fontWeight={700} fill={it.type === 'road' ? '#fff' : '#263238'}>
+          {it.type === 'building' ? '🏢 ' : ''}
+          {it.label || t.label}
+        </text>
+        {selRect}
+        {selected && <rect className="no-print" data-id={it.id} data-role="resize" x={x + w - 14} y={y + h - 14} width={28} height={28} rx={4} fill="#2962ff" />}
+      </g>
+    );
+  }
+
+  if (it.type === 'fire') {
+    return (
+      <g data-id={it.id}>
+        <circle cx={it.x} cy={it.y} r={34} fill="#ff1744" fillOpacity={0.25}>
+          <animate attributeName="r" values="30;46;30" dur="1.4s" repeatCount="indefinite" />
+          <animate attributeName="fill-opacity" values="0.35;0.05;0.35" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+        <circle cx={it.x} cy={it.y} r={26} fill="#d50000" stroke="#fff" strokeWidth={3} />
+        <text x={it.x} y={it.y + 10} fontSize={28} textAnchor="middle">
+          🔥
+        </text>
+        <Label x={it.x} y={it.y + 52} text={it.label || '화점(추정)'} color="#d50000" />
+        {selRect}
+      </g>
+    );
+  }
+
+  if (it.type === 'team') {
+    const team = data.teams.find((x) => x.id === it.teamId);
+    if (!team) {
+      return (
+        <g data-id={it.id} opacity={0.5}>
+          <rect x={x} y={y} width={w} height={h} rx={10} fill="#9e9e9e" />
+          <text x={it.x} y={it.y + 6} fontSize={16} textAnchor="middle" fill="#fff">
+            (삭제된 대)
+          </text>
+          {selRect}
+        </g>
+      );
+    }
+    const lv = teamLevel(team, data.timerSettings, now);
+    const place = teamPlace(data.buildings, data.states, team.floorKey);
+    const sub = [team.unit, place, team.status === 'waiting' ? '대기' : mmss(teamElapsed(team, now))].filter(Boolean).join(' · ');
+    const tw = Math.max(w, 130, Array.from(sub).length * 9 + 24);
+    return (
+      <g data-id={it.id}>
+        <rect
+          x={it.x - tw / 2}
+          y={y}
+          width={tw}
+          height={h + 12}
+          rx={12}
+          fill={team.color}
+          stroke={lv === 'danger' ? '#b71c1c' : lv === 'warning' ? '#ff6d00' : '#fff'}
+          strokeWidth={lv === 'danger' || lv === 'warning' ? 6 : 3}
+        >
+          {lv === 'danger' && <animate attributeName="stroke-opacity" values="1;0.2;1" dur="0.8s" repeatCount="indefinite" />}
+        </rect>
+        <text x={it.x} y={y + 24} fontSize={20} fontWeight={800} textAnchor="middle" fill="#fff">
+          ⛑️ {team.name}
+        </text>
+        <text x={it.x} y={y + 48} fontSize={15} textAnchor="middle" fill="#fff">
+          {sub}
+        </text>
+        {team.task && <Label x={it.x} y={y + h + 34} text={team.task} color={team.color} />}
+        {selRect}
+      </g>
+    );
+  }
+
+  if (it.type === 'text') {
+    return (
+      <g data-id={it.id}>
+        <Label x={it.x} y={it.y + 8} text={it.label || '메모'} color={color} big />
+        {selRect}
+      </g>
+    );
+  }
+
+  return (
+    <g data-id={it.id}>
+      <rect x={x} y={y} width={w} height={h} rx={10} fill={color} stroke="#fff" strokeWidth={2} />
+      <text x={x + 8} y={it.y + 8} fontSize={22}>
+        {t.icon}
+      </text>
+      <text x={x + 38} y={it.y + 7} fontSize={17} fontWeight={700} fill="#fff">
+        {(it.label || t.short).slice(0, 6)}
+      </text>
+      {selRect}
+    </g>
+  );
+}
+
+function Label({ x, y, text, color, big }: { x: number; y: number; text: string; color: string; big?: boolean }) {
+  const fs = big ? 22 : 16;
+  const w = Math.max(40, Array.from(text).length * fs * 0.95 + 16);
+  return (
+    <g>
+      <rect x={x - w / 2} y={y - fs - 2} width={w} height={fs + 12} rx={6} fill="#fff" stroke={color} strokeWidth={2} />
+      <text x={x} y={y + 2} fontSize={fs} fontWeight={700} textAnchor="middle" fill={color}>
+        {text}
+      </text>
+    </g>
+  );
+}
+
+function Inspector({ it, data, now, onPatch }: { it: MapItem; data: SessionData; now: number; onPatch: (p: Partial<MapItem>) => void }) {
+  const t = MAP_TYPES[it.type];
+  const [label, setLabel] = useState(it.label ?? '');
+  useEffect(() => setLabel(it.label ?? ''), [it.id, it.label]);
+  if (it.type === 'team') {
+    const team = data.teams.find((x) => x.id === it.teamId);
+    if (!team) return <p>삭제된 진입대입니다.</p>;
+    const lv = teamLevel(team, data.timerSettings, now);
+    return (
+      <div className="insp">
+        <h3 style={{ color: team.color }}>⛑️ {teamTitle(team)}</h3>
+        <p>
+          <span className="tlevel" style={{ background: LEVEL[lv].color }}>
+            {LEVEL[lv].label}
+          </span>{' '}
+          {mmss(teamElapsed(team, now))}
+        </p>
+        <p>📍 {teamPlace(data.buildings, data.states, team.floorKey) || '위치 미지정'}</p>
+        {team.task && <p>🛠 {team.task}</p>}
+        <p className="hint">대 정보는 현황판 → 진입대 탭에서 바꿉니다.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="insp">
+      <h3>
+        {t?.icon} {t?.label ?? it.type}
+      </h3>
+      <label className="field">
+        <span>표시 이름</span>
+        <input
+          value={label}
+          placeholder={t?.label}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={() => label !== (it.label ?? '') && onPatch({ label: label.trim() || undefined })}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+      </label>
+      {it.type !== 'fire' && (
+        <div className="colors">
+          {MAP_COLORS.map((c) => (
+            <button key={c} className={`swatch ${it.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onPatch({ color: c })} aria-label={c} />
+          ))}
+        </div>
+      )}
+      {(it.type === 'building' || it.type === 'road') && <p className="hint">오른쪽 아래 파란 네모를 끌어 크기를 바꿉니다.</p>}
+    </div>
+  );
+}
+
+/**
+ * 자동 배치 — 현황판 데이터로 작전도를 채운다.
+ *  · 건물마다 사각형 (없을 때만 새로)
+ *  · 화점: 건물 사각형 안에서 층(위아래)·호실(좌우) 비율 위치
+ *  · 진입 중인 대: 해당 층 높이에 건물 양옆으로 줄 세움
+ *  · 지휘차: 없으면 첫 건물 왼쪽 아래
+ * 사람이 옮긴 차량·선은 건드리지 않는다.
+ */
+function autoLayout(items: MapItem[], d: SessionData, H: number) {
+  const out = items.map((x) => ({ ...x }));
+  const n = d.buildings.length;
+  const notes: string[] = [];
+  const rects = d.buildings.map((b, i) => {
+    let it = out.find((x) => x.type === 'building' && x.label === b.name);
+    if (!it) {
+      const w = n > 2 ? 300 : 360;
+      const h = Math.min(H * 0.5, 120 + floorsDescending(b).length * 14);
+      it = { id: uid(), type: 'building', x: Math.round((W * (i + 1)) / (n + 1)), y: Math.round(H * 0.45), w, h: Math.round(h), label: b.name };
+      out.push(it);
+      notes.push(`건물 ${b.name}`);
+    }
+    const { w, h } = sizeOf(it);
+    return { left: it.x - w / 2, top: it.y - h / 2, w, h };
+  });
+
+  const floorY = (bi: number, floor: number) => {
+    const fl = floorsDescending(d.buildings[bi]);
+    const idx = Math.max(0, fl.indexOf(floor));
+    const r = rects[bi];
+    return r.top + 34 + ((idx + 0.5) / fl.length) * (r.h - 40);
+  };
+
+  const fo = d.fireOrigin;
+  if (fo && rects[fo.buildingIdx]) {
+    const b = d.buildings[fo.buildingIdx];
+    const st = d.states[fo.buildingIdx];
+    const u = fo.unitId ? st.units.find((x) => x.id === fo.unitId) : null;
+    const r = rects[fo.buildingIdx];
+    const x = u ? r.left + ((u.unitIndex - 0.5 + (u.spanCount - 1) / 2) / b.defaultUnits) * r.w : r.left + r.w / 2;
+    const label = `화점(추정) ${floorLabel(b, st, fo.floor)}${u ? ` ${unitLabel(b, u)}` : ''}`;
+    const y = floorY(fo.buildingIdx, fo.floor);
+    const ex = out.find((x) => x.type === 'fire');
+    if (ex) Object.assign(ex, { x: Math.round(x), y: Math.round(y), label });
+    else out.push({ id: uid(), type: 'fire', x: Math.round(x), y: Math.round(y), label });
+    notes.push('화점');
+  }
+
+  // 진입대: 해당 층 높이에 건물 왼쪽·오른쪽을 번갈아 세우고, 같은 쪽에서 겹치면 아래로 민다
+  const used: Record<string, number[]> = {};
+  let placed = 0;
+  const active = d.teams
+    .filter((t: Team) => t.status !== 'waiting' && parseFloorKey(t.floorKey) && rects[parseFloorKey(t.floorKey)!.b])
+    .sort((a, b) => parseFloorKey(b.floorKey)!.f - parseFloorKey(a.floorKey)!.f);
+  active.forEach((t: Team, i) => {
+    const p = parseFloorKey(t.floorKey)!;
+    const r = rects[p.b];
+    const left = i % 2 === 0;
+    const side = `${p.b}${left ? 'L' : 'R'}`;
+    const x = left ? r.left - 90 : r.left + r.w + 90;
+    let y = floorY(p.b, p.f);
+    const taken = (used[side] ??= []);
+    while (taken.some((v) => Math.abs(v - y) < 74)) y += 74;
+    taken.push(y);
+    const ex = out.find((x) => x.type === 'team' && x.teamId === t.id);
+    if (ex) Object.assign(ex, { x: Math.round(x), y: Math.round(y) });
+    else out.push({ id: uid(), type: 'team', teamId: t.id, color: t.color, x: Math.round(x), y: Math.round(y) });
+    placed++;
+  });
+  if (placed) notes.push(`진입대 ${placed}`);
+
+  if (!out.some((x) => x.type === 'commandCar') && rects[0]) {
+    out.push({ id: uid(), type: 'commandCar', x: Math.round(Math.max(60, rects[0].left - 120)), y: Math.round(Math.min(H - 40, rects[0].top + rects[0].h + 70)) });
+    notes.push('지휘차');
+  }
+  return { items: out, summary: notes.length ? notes.join(', ') : '바뀐 것 없음' };
+}
+
+function teamLegendHtml(d: SessionData, now: number) {
+  const rows = d.teams
+    .filter((t) => t.status !== 'waiting')
+    .map(
+      (t) =>
+        `<tr><td><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${t.color}"></span> ${escapeHtml(teamTitle(t))}</td><td>${escapeHtml(
+          teamPlace(d.buildings, d.states, t.floorKey),
+        )}</td><td>${escapeHtml(t.task)}</td><td>${LEVEL[teamLevel(t, d.timerSettings, now)].label} ${mmss(teamElapsed(t, now))}</td></tr>`,
+    )
+    .join('');
+  return rows ? `<h2>진입대 현황</h2><table><thead><tr><th>대</th><th>위치</th><th>임무</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table>` : '';
+}
