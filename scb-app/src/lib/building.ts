@@ -1,11 +1,11 @@
 import type { Building, BuildingState, Unit, UnitStatus } from '../types';
 
-export const STATUS: Record<UnitStatus, { label: string; color: string; icon: string }> = {
-  unknown: { label: '미확인', color: '#757575', icon: '?' },
-  confirmed: { label: '확인완료', color: '#2e7d32', icon: '✓' },
-  danger: { label: '화재층', color: '#d32f2f', icon: '🔥' },
-  fireFalseAlarm: { label: '연소확대층', color: '#ef6c00', icon: '⚠' },
-  resourceBase: { label: '자원대기소', color: '#7b1fa2', icon: '◆' },
+export const STATUS: Record<UnitStatus, { label: string; color: string }> = {
+  unknown: { label: '미확인', color: '#64748b' },
+  confirmed: { label: '확인완료', color: '#16a34a' },
+  danger: { label: '화재층', color: '#dc2626' },
+  fireFalseAlarm: { label: '연소확대층', color: '#ea580c' },
+  resourceBase: { label: '자원대기소', color: '#7c3aed' },
 };
 
 export const STATUS_ORDER: UnitStatus[] = ['unknown', 'confirmed', 'danger', 'fireFalseAlarm', 'resourceBase'];

@@ -1,17 +1,20 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import type { UnitStatus } from '../types';
+import { Accessibility, ArrowDownToLine, ArrowUpToLine, BoxSelect, Columns2, EyeOff, Flame, Layers, MousePointerClick, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
+import type { Building, BuildingState, Unit, UnitStatus } from '../types';
+import { STATUS_ICON } from './icons';
 import { useSession } from '../session-context';
-import { floorLabel, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
+import { floorLabel, floorsDescending, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
 import { hhmm } from '../lib/format';
 import type { Selection } from './BuildingCard';
 
 /** 오른쪽 "선택·상태" 패널 — 호실/층을 고르면 상태를 바꾸고 화점·메모를 남긴다 */
-export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: () => void }) {
+export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null; onClear: () => void; onSelect: (s: Selection | null) => void }) {
   const { data, act, me, logs } = useSession();
   const b = sel ? data.buildings[sel.b] : null;
   const st = sel ? data.states[sel.b] : null;
   const unit = sel?.unitId && st ? st.units.find((u) => u.id === sel.unitId) ?? null : null;
   const floorUnits = sel && sel.unitId == null && sel.floor != null && st ? st.units.filter((u) => u.floor === sel.floor) : null;
+  const multiUnits = sel?.units?.length && st ? st.units.filter((u) => sel.units!.includes(u.id)) : null;
 
   const [memo, setMemo] = useState(unit?.memo ?? '');
   const [floorName, setFloorName] = useState('');
@@ -20,11 +23,18 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
     if (b && st && sel?.floor != null) setFloorName(st.floorLabels[String(sel.floor)] ?? '');
   }, [b, st, sel?.floor]);
 
-  if (!sel || !b || !st || (!unit && !floorUnits)) {
+  if (!sel || !b || !st || (!unit && !floorUnits && !multiUnits?.length)) {
     const recent = logs.slice(-12).reverse();
     return (
       <div className="panel-empty">
-        <p className="hint big">보드에서 호실을 누르거나, 층 이름(또는 ALL)을 눌러 층 전체를 선택하세요.</p>
+        <div className="empty-state">
+          <MousePointerClick size={28} />
+          <b>호실을 선택하세요</b>
+          <p className="hint">보드에서 호실을 누르거나, 층 이름(또는 ALL)을 눌러 층 전체를 고릅니다.</p>
+          <p className="hint">
+            여러 층을 한 번에 바꾸려면 건물 위쪽 <BoxSelect size={13} /> <b>범위 선택</b>을 켜고 손가락으로 쭉 끌어 주세요.
+          </p>
+        </div>
         <h3>최근 기록</h3>
         <ul className="mini-log">
           {recent.length === 0 && <li className="hint">아직 기록이 없습니다</li>}
@@ -42,6 +52,9 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
 
   const bi = sel.b;
   const fo = data.fireOrigin;
+
+  // ── 여러 칸 ──
+  if (multiUnits?.length) return <MultiPanel bi={bi} b={b} st={st} units={multiUnits} onClear={onClear} />;
 
   // ── 호실 ──
   if (unit) {
@@ -79,7 +92,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
             </h3>
           </div>
           <button className="icon-btn" onClick={onClear} aria-label="선택 해제">
-            ✕
+            <X size={20} />
           </button>
         </div>
 
@@ -92,7 +105,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               style={{ '--c': STATUS[s].color } as CSSProperties}
               onClick={() => setStatus(s)}
             >
-              <span>{STATUS[s].icon}</span>
+              {statusIcon(s)}
               {STATUS[s].label}
             </button>
           ))}
@@ -111,7 +124,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               )
             }
           >
-            🔥 {isOrigin ? '화점 해제' : '화점(추정) 지정'}
+            <Flame size={18} /> {isOrigin ? '화점 해제' : '화점(추정) 지정'}
           </button>
           <button
             className={`btn ${unit.vulnerable ? 'on' : ''}`}
@@ -126,7 +139,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               )
             }
           >
-            ♿ 피난약자 {unit.vulnerable ? '해제' : '표시'}
+            <Accessibility size={18} /> 피난약자 {unit.vulnerable ? '해제' : '표시'}
           </button>
         </div>
         {isOrigin && fo && (
@@ -184,7 +197,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               )
             }
           >
-            ⇥ 오른쪽과 합치기
+            <Columns2 size={16} /> 오른쪽과 합치기
           </button>
           <button
             className="btn small"
@@ -214,7 +227,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               )
             }
           >
-            ⇤ 나누기
+            <SquareSplitHorizontal size={16} /> 나누기
           </button>
           <button
             className="btn small"
@@ -230,7 +243,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               );
             }}
           >
-            ▢ 빈 칸으로
+            <SquareDashed size={16} /> 빈 칸으로
           </button>
         </div>
       </div>
@@ -242,6 +255,16 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
   const fl = floorLabel(b, st, f);
   const isFloorOrigin = fo?.buildingIdx === bi && fo.unitId == null && fo.floor === f;
   const counts = STATUS_ORDER.map((s) => [s, floorUnits!.filter((u) => u.status === s).length] as const).filter(([, n]) => n > 0);
+  const hidden = new Set(st.hiddenFloors);
+  const visible = floorsDescending(b).filter((x) => !hidden.has(x));
+  // 고른 층에서 아래(또는 위) 층을 모두 골라 "여러 칸 선택"으로 넘긴다
+  const pickFloors = (dir: 'down' | 'up' | 'ground') => {
+    const i = visible.indexOf(f);
+    const floors =
+      dir === 'down' ? visible.slice(i) : dir === 'up' ? visible.slice(0, i + 1) : visible.filter((x) => x <= f && x >= 1);
+    const ids = st.units.filter((u) => floors.includes(u.floor)).map((u) => u.id);
+    if (ids.length) onSelect({ b: bi, unitId: null, floor: null, units: ids });
+  };
   return (
     <div className="action-panel">
       <div className="ap-head">
@@ -253,7 +276,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
           </small>
         </div>
         <button className="icon-btn" onClick={onClear} aria-label="선택 해제">
-          ✕
+          <X size={20} />
         </button>
       </div>
       <h4>층 전체 상태 바꾸기</h4>
@@ -274,10 +297,28 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
               );
             }}
           >
-            <span>{STATUS[s].icon}</span>
+            {statusIcon(s)}
             {STATUS[s].label}
           </button>
         ))}
+      </div>
+      <div className="range-box">
+        <b>
+          <Layers size={16} /> 여러 층 한 번에 고르기
+        </b>
+        <div className="row-btns">
+          <button className="btn small" onClick={() => pickFloors('down')}>
+            <ArrowDownToLine size={16} /> {fl}부터 아래 전부
+          </button>
+          <button className="btn small" onClick={() => pickFloors('up')}>
+            <ArrowUpToLine size={16} /> {fl}부터 위 전부
+          </button>
+        </div>
+        {f > 1 && visible.some((x) => x < 0) && (
+          <button className="btn small" onClick={() => pickFloors('ground')}>
+            <ArrowDownToLine size={16} /> {fl}~1F (지하 빼고)
+          </button>
+        )}
       </div>
       <div className="toggle-row">
         <button
@@ -292,7 +333,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
             )
           }
         >
-          🔥 {isFloorOrigin ? '화점 해제' : '이 층을 화점(추정)으로'}
+          <Flame size={18} /> {isFloorOrigin ? '화점 해제' : '이 층을 화점(추정)으로'}
         </button>
         <button
           className="btn"
@@ -307,7 +348,7 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
             );
           }}
         >
-          👁 이 층 숨기기
+          <EyeOff size={18} /> 이 층 숨기기
         </button>
       </div>
       <h4>층 이름</h4>
@@ -330,6 +371,75 @@ export function ActionPanel({ sel, onClear }: { sel: Selection | null; onClear: 
           저장
         </button>
       </div>
+    </div>
+  );
+}
+
+function statusIcon(s: UnitStatus) {
+  const I = STATUS_ICON[s];
+  return <I size={18} />;
+}
+
+/** "1F~7F" 처럼 고른 칸의 층 범위를 글자로 */
+function floorRangeText(b: Building, st: BuildingState, units: Unit[]) {
+  const fs = Array.from(new Set(units.map((u) => u.floor))).sort((x, y) => y - x);
+  if (fs.length === 1) return floorLabel(b, st, fs[0]);
+  const vis = floorsDescending(b).filter((x) => !st.hiddenFloors.includes(x));
+  const i1 = vis.indexOf(fs[0]);
+  const i2 = vis.indexOf(fs[fs.length - 1]);
+  const contiguous = i1 >= 0 && i2 >= 0 && i2 - i1 + 1 === fs.length;
+  return contiguous
+    ? `${floorLabel(b, st, fs[fs.length - 1])}~${floorLabel(b, st, fs[0])}`
+    : fs.map((x) => floorLabel(b, st, x)).join(', ');
+}
+
+/** 여러 칸을 한꺼번에 — 예) 1F~7F 전부 확인완료 */
+function MultiPanel({ bi, b, st, units, onClear }: { bi: number; b: Building; st: BuildingState; units: Unit[]; onClear: () => void }) {
+  const { act } = useSession();
+  const range = floorRangeText(b, st, units);
+  const floors = new Set(units.map((u) => u.floor)).size;
+  const counts = STATUS_ORDER.map((s) => [s, units.filter((u) => u.status === s).length] as const).filter(([, n]) => n > 0);
+  const ids = new Set(units.map((u) => u.id));
+  return (
+    <div className="action-panel">
+      <div className="ap-head">
+        <div>
+          <small>{b.name}</small>
+          <h3>{range}</h3>
+          <small>
+            {floors}개 층 · {units.length}칸 선택 · {counts.map(([s, n]) => `${STATUS[s].label} ${n}`).join(' · ')}
+          </small>
+        </div>
+        <button className="icon-btn" onClick={onClear} aria-label="선택 해제">
+          <X size={20} />
+        </button>
+      </div>
+      <h4>선택한 {units.length}칸 상태 한 번에 바꾸기</h4>
+      <div className="status-btns">
+        {STATUS_ORDER.map((s) => (
+          <button
+            key={s}
+            style={{ '--c': STATUS[s].color } as CSSProperties}
+            onClick={() => {
+              const n = units.filter((u) => u.status !== s).length;
+              if (n === 0) return;
+              act(
+                (d) => {
+                  for (const u of d.states[bi].units) if (ids.has(u.id)) u.status = s;
+                },
+                '상태',
+                `${b.name} ${range} ${n}칸 → ${STATUS[s].label}`,
+              );
+            }}
+          >
+            {statusIcon(s)}
+            {STATUS[s].label}
+          </button>
+        ))}
+      </div>
+      <p className="hint">
+        <BoxSelect size={13} /> 범위 선택이 켜져 있으면 칸이나 층 이름을 눌러 더하거나 뺄 수 있습니다.
+      </p>
     </div>
   );
 }

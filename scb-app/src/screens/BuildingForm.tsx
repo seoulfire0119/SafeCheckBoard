@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
+import { Building2, Store } from 'lucide-react';
 import type { Building } from '../types';
 
 /** 건물 정보 입력 (새 세션 시작 / 건물 추가 공용) */
@@ -30,11 +31,13 @@ export function BuildingForm(props: { submitLabel: string; onSubmit: (b: Buildin
     <form className="building-form" onSubmit={submit}>
       <div className="seg big">
         <button type="button" className={!horizontal ? 'on' : ''} onClick={() => setHorizontal(false)}>
-          <b>🏢 세로형</b>
+          <Building2 size={26} />
+          <b>세로형</b>
           <small>아파트·빌딩</small>
         </button>
         <button type="button" className={horizontal ? 'on' : ''} onClick={() => setHorizontal(true)}>
-          <b>🏬 가로형</b>
+          <Store size={26} />
+          <b>가로형</b>
           <small>시장·의료시설</small>
         </button>
       </div>

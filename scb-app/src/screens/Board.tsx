@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Building2, ClipboardList, FileText, Flame, LogOut, Map as MapIcon, Ambulance, UserRound, type LucideIcon } from 'lucide-react';
 import { useSession } from '../session-context';
 import { identityText } from '../lib/identity';
 import { STATUS, STATUS_ORDER } from '../lib/building';
@@ -13,11 +14,11 @@ import { copyText } from '../lib/exporter';
 import { TeamAlarm } from '../components/TeamsPanel';
 
 type View = 'status' | 'map' | 'casualty' | 'reports';
-const VIEWS: { key: View; label: string; icon: string }[] = [
-  { key: 'status', label: '현황판', icon: '🏢' },
-  { key: 'map', label: '진압작전도', icon: '🗺️' },
-  { key: 'casualty', label: '인명피해', icon: '🚑' },
-  { key: 'reports', label: '보고서', icon: '📄' },
+const VIEWS: { key: View; label: string; icon: LucideIcon }[] = [
+  { key: 'status', label: '현황판', icon: Building2 },
+  { key: 'map', label: '진압작전도', icon: MapIcon },
+  { key: 'casualty', label: '인명피해', icon: Ambulance },
+  { key: 'reports', label: '보고서', icon: FileText },
 ];
 
 export function Board({ onLeave }: { onLeave: () => void }) {
@@ -50,13 +51,16 @@ export function Board({ onLeave }: { onLeave: () => void }) {
         <nav className="tabs" aria-label="화면 전환">
           {VIEWS.map((v) => (
             <button key={v.key} className={view === v.key ? 'on' : ''} onClick={() => pick(v.key)}>
-              <span aria-hidden>{v.icon}</span> {v.label}
+              <v.icon size={18} aria-hidden />
+              <span>{v.label}</span>
             </button>
           ))}
         </nav>
         <div className="top-right">
           <div className="status-chips">
-            {data.fireOrigin && <span className="schip fire">🔥 화점</span>}
+            {data.fireOrigin && <span className="schip fire">
+                <Flame size={13} /> 화점
+              </span>}
             {counts.map(({ s, n }) => (
               <span key={s} className="schip" style={{ background: STATUS[s].color }}>
                 {STATUS[s].label} {n}
@@ -64,13 +68,14 @@ export function Board({ onLeave }: { onLeave: () => void }) {
             ))}
           </div>
           <button className="me-chip" onClick={() => setDialog('me')} title="기록자 정보 변경">
-            👤 <span>{identityText(me)}</span>
+            <UserRound size={16} />
+            <span>{identityText(me)}</span>
           </button>
           <button className="btn small" onClick={() => setDialog('log')}>
-            📋 기록 <b>{logs.length}</b>
+            <ClipboardList size={17} /> 기록 <b className="count">{logs.length}</b>
           </button>
           <button className="icon-btn light" onClick={() => setDialog('leave')} aria-label="나가기" title="세션 나가기">
-            ⎋
+            <LogOut size={18} />
           </button>
         </div>
       </header>

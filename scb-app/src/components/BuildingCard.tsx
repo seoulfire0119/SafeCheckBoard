@@ -1,4 +1,5 @@
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from 'react';
+import { Accessibility, BoxSelect, Building2, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, X } from 'lucide-react';
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending, rooftopFloor, STATUS, unitLabel } from '../lib/building';
@@ -10,6 +11,21 @@ export interface Selection {
   b: number;
   unitId: string | null; // 호실 선택
   floor: number | null; // 층 전체 선택 (unitId 가 null 일 때)
+  units?: string[]; // 여러 칸 선택 (범위 선택·드래그)
+}
+
+/** 층 범위(위→아래 순서의 visible 층 목록 기준)와 칸 범위로 호실 id 목록을 구한다 */
+export function unitsInRange(units: Unit[], floors: number[], f1: number, f2: number, s1 = 0, s2 = 0) {
+  const i1 = floors.indexOf(f1);
+  const i2 = floors.indexOf(f2);
+  if (i1 < 0 || i2 < 0) return [];
+  const pick = new Set(floors.slice(Math.min(i1, i2), Math.max(i1, i2) + 1));
+  const all = s1 === 0 || s2 === 0;
+  const lo = Math.min(s1, s2);
+  const hi = Math.max(s1, s2);
+  return units
+    .filter((u) => pick.has(u.floor) && (all || (u.unitIndex <= hi && u.unitIndex + u.spanCount - 1 >= lo)))
+    .map((u) => u.id);
 }
 
 const STAT_FIELDS: { key: keyof PersonnelStats; label: string; color: string }[] = [
@@ -37,6 +53,11 @@ export function BuildingCard(props: {
   const roof = rooftopFloor(b);
   const fo = data.fireOrigin && data.fireOrigin.buildingIdx === idx ? data.fireOrigin : null;
   const hidden = new Set(state.hiddenFloors);
+  const [rangeMode, setRangeMode] = useState(false);
+  const drag = useRef<{ f: number; s: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const multi = new Set(selection?.units ?? []);
+  const visibleFloors = floorsDescending(b).filter((f) => !hidden.has(f));
 
   // 숨긴 층은 연속된 묶음으로 한 줄에 접어 보여준다
   const rows: ({ kind: 'floor'; f: number } | { kind: 'hidden'; floors: number[] })[] = [];
@@ -48,6 +69,56 @@ export function BuildingCard(props: {
     } else rows.push({ kind: 'floor', f });
   }
 
+  const pickUnit = (u: Unit, f: number) => {
+    if (suppressClick.current) return;
+    if (!rangeMode) return props.onSelect({ b: idx, unitId: u.id, floor: f });
+    const next = new Set(multi);
+    if (next.has(u.id)) next.delete(u.id);
+    else next.add(u.id);
+    props.onSelect(next.size ? { b: idx, unitId: null, floor: null, units: [...next] } : null);
+  };
+  const pickFloor = (f: number, floorSel: boolean) => {
+    if (suppressClick.current) return;
+    if (!rangeMode) return props.onSelect(floorSel ? null : { b: idx, unitId: null, floor: f });
+    const ids = state.units.filter((u) => u.floor === f).map((u) => u.id);
+    const next = new Set(multi);
+    const allIn = ids.every((id) => next.has(id));
+    for (const id of ids) {
+      if (allIn) next.delete(id);
+      else next.add(id);
+    }
+    props.onSelect(next.size ? { b: idx, unitId: null, floor: null, units: [...next] } : null);
+  };
+
+  // 끌어서 범위 선택 — 범위 모드(손가락) 또는 마우스
+  const cellAt = (x: number, y: number) => {
+    const el = document.elementFromPoint(x, y)?.closest('[data-floor]') as HTMLElement | null;
+    if (!el || !el.closest(`[data-bgrid="${idx}"]`)) return null;
+    return { f: Number(el.dataset.floor), s: Number(el.dataset.slot) };
+  };
+  const onDown = (e: RPointerEvent) => {
+    if (!rangeMode && e.pointerType !== 'mouse') return;
+    if (e.button !== 0) return;
+    const c = cellAt(e.clientX, e.clientY);
+    drag.current = c ? { ...c, moved: false } : null;
+  };
+  const onMove = (e: RPointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const c = cellAt(e.clientX, e.clientY);
+    if (!c || (c.f === d.f && c.s === d.s && !d.moved)) return;
+    d.moved = true;
+    const ids = unitsInRange(state.units, visibleFloors, d.f, c.f, d.s, c.s);
+    props.onSelect(ids.length ? { b: idx, unitId: null, floor: null, units: ids } : null);
+  };
+  const onUp = () => {
+    if (drag.current?.moved) {
+      suppressClick.current = true;
+      setTimeout(() => (suppressClick.current = false), 80);
+    }
+    drag.current = null;
+  };
+
   const cols = b.defaultUnits;
   const gridStyle: CSSProperties = {
     gridTemplateColumns: `minmax(46px,auto) 34px repeat(${cols}, minmax(42px, 1fr)) minmax(0, auto)`,
@@ -55,7 +126,7 @@ export function BuildingCard(props: {
   const minWidth = 46 + 34 + cols * 46 + 90;
 
   return (
-    <section className="bcard" style={{ minWidth: Math.min(minWidth, 900) }}>
+    <section className="bcard" style={{ minWidth: Math.min(minWidth, 900), flexGrow: cols + 3 }}>
       <div className="pboard">
         {STAT_FIELDS.map((s) => (
           <button key={s.key} className="pstat" onClick={() => setEditStat(s.key)}>
@@ -65,26 +136,44 @@ export function BuildingCard(props: {
         ))}
       </div>
       <div className="bhead">
-        <b>🏢 {b.name}</b>
-        <small>
+        <Building2 size={18} className="ic-brand" />
+        <b className="bname">{b.name}</b>
+        <small className="bmeta-txt">
           {floorsDescending(b).length}
           {b.isHorizontal ? '구역' : '층'} · {state.units.length}칸
         </small>
         <span className="grow" />
+        <button
+          className={`btn tiny ${rangeMode ? 'on' : ''}`}
+          onClick={() => setRangeMode(!rangeMode)}
+          aria-pressed={rangeMode}
+          title="손가락으로 끌거나 여러 칸을 눌러 한꺼번에 선택"
+        >
+          <BoxSelect size={14} /> {rangeMode ? '범위 선택 중' : '범위 선택'}
+        </button>
         {props.canAdd && (
           <button className="btn tiny" onClick={props.onAdd}>
-            + 건물
+            <Plus size={14} /> 건물
           </button>
         )}
         {data.buildings.length > 1 && (
           <button className="icon-btn" aria-label="건물 제거" onClick={() => setConfirmRemove(true)}>
-            ✕
+            <X size={18} />
           </button>
         )}
       </div>
 
       <div className="grid-scroll">
-        <div className="bgrid" style={gridStyle}>
+        <div
+          className={`bgrid ${rangeMode ? 'range' : ''}`}
+          style={gridStyle}
+          data-bgrid={idx}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+          onPointerLeave={(e) => e.pointerType === 'mouse' && onUp()}
+        >
           {rows.map((r) => {
             if (r.kind === 'hidden')
               return (
@@ -102,7 +191,7 @@ export function BuildingCard(props: {
                     )
                   }
                 >
-                  ▾ 숨긴 {b.isHorizontal ? '구역' : '층'} {r.floors.length}개 ({floorLabel(b, state, r.floors[r.floors.length - 1])}~
+                  <ChevronDown size={14} /> 숨긴 {b.isHorizontal ? '구역' : '층'} {r.floors.length}개 ({floorLabel(b, state, r.floors[r.floors.length - 1])}~
                   {floorLabel(b, state, r.floors[0])}) — 눌러서 표시
                 </button>
               );
@@ -125,8 +214,9 @@ export function BuildingCard(props: {
                     u={u}
                     span={span}
                     selected={selection?.unitId === u.id}
+                    multi={multi.has(u.id)}
                     origin={!!fo && fo.unitId === u.id}
-                    onClick={() => props.onSelect({ b: idx, unitId: u.id, floor: f })}
+                    onClick={() => pickUnit(u, f)}
                   />,
                 );
                 slot += span;
@@ -159,7 +249,7 @@ export function BuildingCard(props: {
                       )
                     }
                   >
-                    +
+                    <Plus size={16} />
                   </button>,
                 );
                 slot++;
@@ -170,13 +260,15 @@ export function BuildingCard(props: {
                 <button
                   className={`flabel ${f === roof ? 'roof' : ''} ${floorSel ? 'sel' : ''}`}
                   style={teams.length ? { boxShadow: `inset 4px 0 0 ${teams[0].color}` } : undefined}
-                  onClick={() => props.onSelect(floorSel ? null : { b: idx, unitId: null, floor: f })}
+                  data-floor={f}
+                  data-slot={0}
+                  onClick={() => pickFloor(f, floorSel)}
                 >
-                  {floorFire && <span className="fire-dot">🔥</span>}
+                  {floorFire && <Flame size={14} className="fire-dot" />}
                   {floorLabel(b, state, f)}
                   {vuln > 0 && <span className="vbadge">약자 {vuln}</span>}
                 </button>
-                <button className={`allbtn ${floorSel ? 'sel' : ''}`} onClick={() => props.onSelect(floorSel ? null : { b: idx, unitId: null, floor: f })}>
+                <button className={`allbtn ${floorSel ? 'sel' : ''}`} data-floor={f} data-slot={0} onClick={() => pickFloor(f, floorSel)}>
                   ALL
                 </button>
                 {cells}
@@ -190,7 +282,7 @@ export function BuildingCard(props: {
                         style={{ background: t.color }}
                         title={`${t.name} ${t.unit} ${t.task} · ${LEVEL[lv].label}`}
                       >
-                        ⛑️ {t.name}
+                        <HardHat size={13} /> {t.name}
                         {t.unit && <small>{t.unit}</small>}
                         <i>{mmss(teamElapsed(t, now))}</i>
                       </span>
@@ -271,21 +363,23 @@ export function BuildingCard(props: {
   );
 }
 
-function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean; origin: boolean; onClick: () => void }) {
+function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean; multi: boolean; origin: boolean; onClick: () => void }) {
   const { u } = props;
   const st = STATUS[u.status];
   return (
     <button
-      className={`ucell st-${u.status} ${props.selected ? 'sel' : ''} ${props.origin ? 'origin' : ''}`}
+      className={`ucell st-${u.status} ${props.selected ? 'sel' : ''} ${props.multi ? 'msel' : ''} ${props.origin ? 'origin' : ''}`}
+      data-floor={u.floor}
+      data-slot={u.unitIndex}
       style={{ gridColumn: `span ${props.span}`, background: u.status === 'unknown' ? undefined : st.color }}
       onClick={props.onClick}
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
       <span className="unum">{unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
-      {u.vulnerable && <span className="uv" title="피난약자">♿</span>}
-      {!u.memoPinned && u.memo && <span className="um" title={u.memo}>✎</span>}
-      {props.origin && <span className="uorigin">🔥</span>}
+      {u.vulnerable && <Accessibility size={13} className="uv" aria-label="피난약자" />}
+      {!u.memoPinned && u.memo && <StickyNote size={12} className="um" aria-label="메모 있음" />}
+      {props.origin && <Flame size={16} className="uorigin" aria-label="화점" />}
     </button>
   );
 }
@@ -308,8 +402,8 @@ function StatDialog(props: { label: string; value: number; onClose: () => void; 
       }
     >
       <div className="stepper">
-        <button className="btn" onClick={() => setV(Math.max(0, v - 1))}>
-          −
+        <button className="btn" onClick={() => setV(Math.max(0, v - 1))} aria-label="빼기">
+          <Minus size={20} />
         </button>
         <input
           inputMode="numeric"
@@ -318,8 +412,8 @@ function StatDialog(props: { label: string; value: number; onClose: () => void; 
           onKeyDown={(e) => e.key === 'Enter' && props.onSave(v)}
         />
         <span>명</span>
-        <button className="btn" onClick={() => setV(Math.min(999, v + 1))}>
-          +
+        <button className="btn" onClick={() => setV(Math.min(999, v + 1))} aria-label="더하기">
+          <Plus size={20} />
         </button>
       </div>
     </Modal>

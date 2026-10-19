@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { MessageSquare, Send } from 'lucide-react';
 import { useSession } from '../session-context';
 import { chatSender } from '../lib/identity';
 import { sendChat } from '../lib/session';
@@ -30,7 +31,12 @@ export function ChatPanel({ onSeen }: { onSeen: () => void }) {
   return (
     <div className="chat">
       <div className="chat-list">
-        {chat.length === 0 && <p className="hint">메시지가 없습니다</p>}
+        {chat.length === 0 && (
+          <div className="empty-state">
+            <MessageSquare size={26} />
+            <p className="hint">메시지가 없습니다</p>
+          </div>
+        )}
         {chat.map((m) => (
           <div key={m.id} className={`bubble ${m.sender === mine ? 'me' : ''}`}>
             <div className="bmeta">
@@ -49,8 +55,8 @@ export function ChatPanel({ onSeen }: { onSeen: () => void }) {
         }}
       >
         <input value={text} maxLength={500} placeholder="메시지 입력…" onChange={(e) => setText(e.target.value)} />
-        <button className="btn primary" disabled={!text.trim()}>
-          전송
+        <button className="btn primary icon-only" disabled={!text.trim()} aria-label="전송">
+          <Send size={18} />
         </button>
       </form>
     </div>

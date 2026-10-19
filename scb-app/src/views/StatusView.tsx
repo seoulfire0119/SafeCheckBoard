@@ -59,7 +59,7 @@ export function StatusView() {
           </button>
         </div>
         <div className="side-body">
-          {tab === 'select' && <ActionPanel sel={sel} onClear={() => setSel(null)} />}
+          {tab === 'select' && <ActionPanel sel={sel} onClear={() => setSel(null)} onSelect={select} />}
           {tab === 'teams' && <TeamsPanel />}
           {tab === 'chat' && <ChatPanel onSeen={markSeen} />}
         </div>

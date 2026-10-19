@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Copy, Download, Printer, Search } from 'lucide-react';
 import type { LogCategory } from '../types';
 import { useSession } from '../session-context';
 import { dateTime, hhmmss } from '../lib/format';
@@ -73,7 +74,7 @@ export function LogDialog({ onClose }: { onClose: () => void }) {
               (await copyText(text)) && toast(`${chronological.length}건 복사됨`);
             }}
           >
-            📋 복사
+            <Copy size={16} /> 복사
           </button>
           <button
             className="btn"
@@ -84,10 +85,10 @@ export function LogDialog({ onClose }: { onClose: () => void }) {
               )
             }
           >
-            🖨 인쇄
+            <Printer size={16} /> 인쇄
           </button>
           <button className="btn primary" onClick={() => downloadCsv(`${fileBase}.csv`, header, asRows())}>
-            ⬇ 엑셀(CSV) 받기
+            <Download size={16} /> 엑셀(CSV) 받기
           </button>
         </>
       }
@@ -110,9 +111,13 @@ export function LogDialog({ onClose }: { onClose: () => void }) {
               <option key={a}>{a}</option>
             ))}
           </select>
-          <input value={q} placeholder="검색 (예: 301호, 2착대)" onChange={(e) => setQ(e.target.value)} />
+          <div className="search">
+            <Search size={16} />
+            <input value={q} placeholder="검색 (예: 301호, 2착대)" onChange={(e) => setQ(e.target.value)} />
+          </div>
           <button className="btn small" onClick={() => setNewestFirst(!newestFirst)}>
-            {newestFirst ? '↓ 최신순' : '↑ 시간순'}
+            {newestFirst ? <ArrowDownWideNarrow size={16} /> : <ArrowUpNarrowWide size={16} />}
+            {newestFirst ? '최신순' : '시간순'}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { Copy, Download, Plus, Printer } from 'lucide-react';
 import type { CasualtyRow } from '../types';
 import { useSession } from '../session-context';
 import { saveField } from '../lib/session';
@@ -83,7 +84,7 @@ export function CasualtyView() {
               (await copyText(t)) && toast('인명피해 현황 복사됨 (성명 가림)');
             }}
           >
-            📋 복사
+            <Copy size={16} /> 복사
           </button>
           <button
             className="btn small"
@@ -94,10 +95,10 @@ export function CasualtyView() {
               )
             }
           >
-            🖨 인쇄
+            <Printer size={16} /> 인쇄
           </button>
           <button className="btn small" onClick={() => downloadCsv(`인명피해_${code}.csv`, header, asRows(true))}>
-            ⬇ CSV
+            <Download size={16} /> CSV
           </button>
         </div>
       </div>
@@ -178,7 +179,7 @@ export function CasualtyView() {
             log('인명피해', `환자 #${rows.length + 1} 행 추가`);
           }}
         >
-          + 환자 추가
+          <Plus size={16} /> 환자 추가
         </button>
       </div>
     </div>

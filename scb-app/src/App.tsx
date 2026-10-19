@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, Flame, LogIn, Plus, UserRound } from 'lucide-react';
 import type { Identity, SessionData } from './types';
 import { identityText, loadIdentity, saveIdentity } from './lib/identity';
 import { addLog, createSession, generateCode, sessionExists, subscribeSession } from './lib/session';
@@ -97,7 +98,9 @@ export default function App() {
 function Logo() {
   return (
     <div className="logo">
-      <div className="logo-mark">🔥</div>
+      <div className="logo-mark">
+        <Flame size={34} strokeWidth={2.2} />
+      </div>
       <div>
         <h1>SafeCheckBoard</h1>
         <p>현장안전보드 · 화재현장 확인 시스템</p>
@@ -131,18 +134,24 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
       <Logo />
       {props.me && (
         <button className="me-chip big" onClick={props.onEditMe}>
-          👤 {identityText(props.me)} <small>변경</small>
+          <UserRound size={18} /> {identityText(props.me)} <small>변경</small>
         </button>
       )}
       <div className="home-cards">
         <section className="card">
+          <div className="card-icon">
+            <Plus size={22} />
+          </div>
           <h2>새 현장 시작</h2>
           <p className="hint">새 세션을 만들고 6자리 코드를 받습니다. 코드를 공유하면 다른 사람도 같은 화면을 봅니다.</p>
           <button className="btn primary block" onClick={props.onNew}>
-            🚀 새 세션 시작
+            새 세션 시작
           </button>
         </section>
         <section className="card">
+          <div className="card-icon alt">
+            <LogIn size={22} />
+          </div>
           <h2>진행 중인 현장 참여</h2>
           <form
             onSubmit={(e) => {
@@ -160,7 +169,7 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
             />
             {err && <p className="error">{err}</p>}
             <button className="btn block" disabled={busy}>
-              {busy ? '연결 중…' : '참여하기 →'}
+              {busy ? '연결 중…' : '참여하기'} {!busy && <ArrowRight size={18} />}
             </button>
           </form>
         </section>
@@ -176,7 +185,7 @@ function NewSession(props: { me: Identity; onBack: () => void; onCreated: (code:
   return (
     <div className="setup">
       <button className="btn ghost" onClick={props.onBack}>
-        ← 처음으로
+        <ArrowLeft size={18} /> 처음으로
       </button>
       <section className="card">
         <h2>새 현장 — 첫 건물 정보</h2>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Copy, FileDown, Plus, Printer, Save, Sparkles, X } from 'lucide-react';
 import type { ActionRow, AgencyRow, SessionData } from '../types';
 import { useSession } from '../session-context';
 import { deleteBriefing, saveBriefing, saveField, subscribeBriefings, type BriefingRecord } from '../lib/session';
@@ -93,10 +94,10 @@ function ReportHead(props: { title: string; onCopy: () => void; onPrint: () => v
       {props.children}
       <span className="grow" />
       <button className="btn small" onClick={props.onCopy}>
-        📋 복사
+        <Copy size={16} /> 복사
       </button>
       <button className="btn small" onClick={props.onPrint}>
-        🖨 인쇄
+        <Printer size={16} /> 인쇄
       </button>
     </div>
   );
@@ -282,7 +283,7 @@ function TimelineTable() {
               </td>
               <td>
                 <button className="icon-btn" aria-label="행 삭제" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>
-                  ✕
+                  <X size={18} />
                 </button>
               </td>
             </tr>
@@ -290,7 +291,7 @@ function TimelineTable() {
         </tbody>
       </table>
       <button className="btn block dashed" onClick={() => setRows((rs) => [...rs, { time: hhmm(Date.now()), content: '' }])}>
-        + 행 추가 (지금 시각)
+        <Plus size={16} /> 행 추가 (지금 시각)
       </button>
     </div>
   );
@@ -305,7 +306,7 @@ function ImportFromLog({ onPick }: { onPick: (rows: ActionRow[]) => void }) {
   if (!open)
     return (
       <button className="btn small" onClick={() => setOpen(true)}>
-        ⤵ 활동기록에서 가져오기
+        <FileDown size={16} /> 활동기록에서 가져오기
       </button>
     );
   return (
@@ -416,7 +417,7 @@ function AgencyTable() {
               ))}
               <td>
                 <button className="icon-btn" aria-label="행 삭제" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>
-                  ✕
+                  <X size={18} />
                 </button>
               </td>
             </tr>
@@ -424,7 +425,7 @@ function AgencyTable() {
         </tbody>
       </table>
       <button className="btn block dashed" onClick={() => setRows((rs) => [...rs, { agency: '', person: '', arrive: hhmm(Date.now()), action: '' }])}>
-        + 기관 추가
+        <Plus size={16} /> 기관 추가
       </button>
     </div>
   );
@@ -563,7 +564,7 @@ function Briefing() {
             ))}
           </div>
           <button className="btn small primary" onClick={fill}>
-            ✨ 자동 채우기
+            <Sparkles size={16} /> 자동 채우기
           </button>
         </ReportHead>
         <div className="row-btns">
@@ -583,7 +584,7 @@ function Briefing() {
               }
             }}
           >
-            💾 {editingId ? '덮어쓰기' : '게시판에 저장'}
+            <Save size={16} /> {editingId ? '덮어쓰기' : '게시판에 저장'}
           </button>
           {editingId && (
             <button
@@ -629,7 +630,7 @@ function Briefing() {
                   if (editingId === r.id) setEditingId(undefined);
                 }}
               >
-                ✕
+                <X size={18} />
               </button>
             </li>
           ))}

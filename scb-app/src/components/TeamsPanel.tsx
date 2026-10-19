@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { HardHat, MapPin, Pause, Pencil, Play, Plus, Settings, Square, Wrench } from 'lucide-react';
 import type { Team } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending } from '../lib/building';
@@ -40,10 +41,14 @@ export function TeamsPanel() {
           );
         })}
         <button className="icon-btn" title="타이머 설정" onClick={() => setSettings(true)}>
-          ⚙
+          <Settings size={18} />
         </button>
       </div>
-      {active.length === 0 && <p className="hint">진입한 대가 없습니다. 아래에서 대를 골라 [진입]을 누르세요.</p>}
+      {active.length === 0 && (
+        <p className="hint">
+          <HardHat size={14} /> 진입한 대가 없습니다. 아래에서 대를 골라 [진입]을 누르세요.
+        </p>
+      )}
 
       <ul className="team-list">
         {data.teams.map((t) => {
@@ -61,7 +66,13 @@ export function TeamsPanel() {
                 <span className="ttime">{mmss(teamElapsed(t, now))}</span>
               </div>
               <div className="team-mid" onClick={() => setEdit(t)} role="button" tabIndex={0}>
-                📍 {place(t)} {t.task && <>· 🛠 {t.task}</>} <small>✎</small>
+                <MapPin size={14} /> {place(t)}
+                {t.task && (
+                  <>
+                    <Wrench size={14} /> {t.task}
+                  </>
+                )}
+                <Pencil size={13} className="edit-ic" />
               </div>
               <div className="team-btns">
                 {t.status === 'waiting' && (
@@ -79,7 +90,7 @@ export function TeamsPanel() {
                       )
                     }
                   >
-                    ▶ 진입
+                    <Play size={15} /> 진입
                   </button>
                 )}
                 {t.status === 'active' && (
@@ -96,7 +107,7 @@ export function TeamsPanel() {
                       )
                     }
                   >
-                    ⏸ 정지
+                    <Pause size={15} /> 정지
                   </button>
                 )}
                 {t.status === 'paused' && (
@@ -114,7 +125,7 @@ export function TeamsPanel() {
                       )
                     }
                   >
-                    ▶ 재개
+                    <Play size={15} /> 재개
                   </button>
                 )}
                 {t.status !== 'waiting' && (
@@ -132,7 +143,7 @@ export function TeamsPanel() {
                       )
                     }
                   >
-                    ⏹ 철수
+                    <Square size={14} /> 철수
                   </button>
                 )}
               </div>
@@ -140,8 +151,8 @@ export function TeamsPanel() {
           );
         })}
       </ul>
-      <button className="btn block" onClick={() => setEdit('new')}>
-        + 대 추가
+      <button className="btn block dashed" onClick={() => setEdit('new')}>
+        <Plus size={16} /> 대 추가
       </button>
 
       {edit && <TeamDialog team={edit === 'new' ? null : edit} onClose={() => setEdit(null)} />}
@@ -335,7 +346,7 @@ export function TeamAlarm() {
       const lv = teamLevel(t, data.timerSettings, now);
       const before = prev.current.get(t.id);
       if (before && before !== lv && (lv === 'warning' || lv === 'danger')) {
-        toast(`${lv === 'danger' ? '🚨' : '⚠'} ${teamTitle(t)} ${LEVEL[lv].label} — ${mmss(teamElapsed(t, now))} 경과`, lv === 'danger' ? 'error' : 'info');
+        toast(`[${LEVEL[lv].label}] ${teamTitle(t)} — ${mmss(teamElapsed(t, now))} 경과`, lv === 'danger' ? 'error' : 'info');
         if (sound) beep(lv === 'danger');
       } else if (sound && (lv === 'warning' || lv === 'danger') && Math.floor(teamElapsed(t, now) / 1000) % 30 === 0) {
         beep(lv === 'danger');

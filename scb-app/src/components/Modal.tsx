@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 
 export function Modal(props: {
   title: ReactNode;
@@ -23,7 +24,7 @@ export function Modal(props: {
           <h2>{props.title}</h2>
           {onClose && (
             <button className="icon-btn" onClick={onClose} aria-label="닫기">
-              ✕
+              <X size={20} />
             </button>
           )}
         </div>

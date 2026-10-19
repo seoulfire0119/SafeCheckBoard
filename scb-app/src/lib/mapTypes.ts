@@ -1,7 +1,6 @@
 export interface MapType {
   label: string;
   short: string;
-  icon: string;
   color: string;
   w: number;
   h: number;
@@ -18,40 +17,40 @@ export const MAP_CATS: { label: string; types: string[] }[] = [
 ];
 
 export const MAP_TYPES: Record<string, MapType> = {
-  fire: { label: '화점(추정)', short: '화점', icon: '🔥', color: '#d50000', w: 64, h: 64 },
-  entry: { label: '진입구', short: '진입구', icon: '➡️', color: '#00897b', w: 70, h: 40 },
-  danger: { label: '위험구역', short: '위험', icon: '⚠️', color: '#ff6f00', w: 70, h: 40 },
-  text: { label: '메모', short: '메모', icon: '📝', color: '#37474f', w: 110, h: 34 },
+  fire: { label: '화점(추정)', short: '화점', color: '#d50000', w: 64, h: 64 },
+  entry: { label: '진입구', short: '진입구', color: '#00897b', w: 70, h: 60 },
+  danger: { label: '위험구역', short: '위험', color: '#ff6f00', w: 70, h: 60 },
+  text: { label: '메모', short: '메모', color: '#37474f', w: 110, h: 40 },
 
-  building: { label: '건물', short: '건물', icon: '🏢', color: '#546e7a', w: 260, h: 170 },
-  entrance: { label: '출입구', short: '출입구', icon: '🚪', color: '#00695c', w: 70, h: 40 },
-  road: { label: '도로', short: '도로', icon: '🛣️', color: '#455a64', w: 360, h: 50 },
-  fireHydrant: { label: '소화전', short: '소화전', icon: '🧯', color: '#d32f2f', w: 64, h: 40 },
+  building: { label: '건물', short: '건물', color: '#546e7a', w: 260, h: 170 },
+  entrance: { label: '출입구', short: '출입구', color: '#00695c', w: 70, h: 60 },
+  road: { label: '도로', short: '도로', color: '#455a64', w: 360, h: 50 },
+  fireHydrant: { label: '소화전', short: '소화전', color: '#d32f2f', w: 64, h: 60 },
 
-  pumpTruck: { label: '펌프차', short: '펌프', icon: '🚒', color: '#c62828', w: 80, h: 42 },
-  tankTruck: { label: '탱크차', short: '탱크', icon: '💧', color: '#1565c0', w: 80, h: 42 },
-  foamTruck: { label: '화학차', short: '화학', icon: '🧪', color: '#6a1b9a', w: 80, h: 42 },
-  aerialLadder: { label: '고가차', short: '고가', icon: '🪜', color: '#e65100', w: 80, h: 42 },
-  articulatedLadder: { label: '굴절차', short: '굴절', icon: '🏗️', color: '#b71c1c', w: 80, h: 42 },
-  supportTender: { label: '조연차', short: '조연', icon: '🛠️', color: '#795548', w: 80, h: 42 },
+  pumpTruck: { label: '펌프차', short: '펌프', color: '#c62828', w: 76, h: 64 },
+  tankTruck: { label: '탱크차', short: '탱크', color: '#1565c0', w: 76, h: 64 },
+  foamTruck: { label: '화학차', short: '화학', color: '#6a1b9a', w: 76, h: 64 },
+  aerialLadder: { label: '고가차', short: '고가', color: '#e65100', w: 76, h: 64 },
+  articulatedLadder: { label: '굴절차', short: '굴절', color: '#b71c1c', w: 76, h: 64 },
+  supportTender: { label: '조연차', short: '조연', color: '#795548', w: 76, h: 64 },
 
-  rescueVehicle: { label: '구조공작차', short: '구조', icon: '🧰', color: '#1b5e20', w: 80, h: 42 },
-  rescueBus: { label: '구조버스', short: '구조버스', icon: '🚌', color: '#33691e', w: 80, h: 42 },
-  ambulance: { label: '구급차', short: '구급', icon: '🚑', color: '#2e7d32', w: 80, h: 42 },
-  ambulanceNP: { label: '구급차(음압)', short: '음압', icon: '🚑', color: '#00695c', w: 80, h: 42 },
+  rescueVehicle: { label: '구조공작차', short: '구조', color: '#1b5e20', w: 76, h: 64 },
+  rescueBus: { label: '구조버스', short: '구조버스', color: '#33691e', w: 76, h: 64 },
+  ambulance: { label: '구급차', short: '구급', color: '#2e7d32', w: 76, h: 64 },
+  ambulanceNP: { label: '구급차(음압)', short: '음압', color: '#00695c', w: 76, h: 64 },
 
-  commandCar: { label: '지휘차', short: '지휘', icon: '🚩', color: '#1565c0', w: 80, h: 42 },
-  headquartersCar: { label: '본부차', short: '본부', icon: '🏛️', color: '#0d47a1', w: 80, h: 42 },
-  recoveryVehicle: { label: '회복차', short: '회복', icon: '🛏️', color: '#4e342e', w: 80, h: 42 },
+  commandCar: { label: '지휘차', short: '지휘', color: '#1565c0', w: 76, h: 64 },
+  headquartersCar: { label: '본부차', short: '본부', color: '#0d47a1', w: 76, h: 64 },
+  recoveryVehicle: { label: '회복차', short: '회복', color: '#4e342e', w: 76, h: 64 },
 
-  police: { label: '경찰', short: '경찰', icon: '👮', color: '#1a237e', w: 70, h: 40 },
-  cityHall: { label: '시청', short: '시청', icon: '🏛️', color: '#37474f', w: 70, h: 40 },
-  districtOffice: { label: '구청', short: '구청', icon: '🏢', color: '#455a64', w: 70, h: 40 },
-  gasAgency: { label: '가스', short: '가스', icon: '🔥', color: '#e65100', w: 70, h: 40 },
-  electricAgency: { label: '전기', short: '전기', icon: '⚡', color: '#f9a825', w: 70, h: 40 },
-  healthCenter: { label: '보건소', short: '보건소', icon: '🏥', color: '#00838f', w: 70, h: 40 },
+  police: { label: '경찰', short: '경찰', color: '#1a237e', w: 70, h: 60 },
+  cityHall: { label: '시청', short: '시청', color: '#37474f', w: 70, h: 60 },
+  districtOffice: { label: '구청', short: '구청', color: '#455a64', w: 70, h: 60 },
+  gasAgency: { label: '가스', short: '가스', color: '#e65100', w: 70, h: 60 },
+  electricAgency: { label: '전기', short: '전기', color: '#f9a825', w: 70, h: 60 },
+  healthCenter: { label: '보건소', short: '보건소', color: '#00838f', w: 70, h: 60 },
 
-  team: { label: '진입대', short: '진입대', icon: '⛑️', color: '#e53935', w: 96, h: 48 },
+  team: { label: '진입대', short: '진입대', color: '#e53935', w: 96, h: 48 },
 };
 
 export const MAP_COLORS = ['#c62828', '#e65100', '#f9a825', '#2e7d32', '#00695c', '#1565c0', '#4a148c', '#880e4f', '#4e342e', '#546e7a'];

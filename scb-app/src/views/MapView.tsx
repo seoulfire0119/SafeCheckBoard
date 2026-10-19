@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { Building2, Flame, Grid3x3, Hand, HardHat, ImageUp, Maximize, MapPin, Minus, PanelLeft, Plus, Printer, Route, Sparkles, Trash2, Waves, Wrench } from 'lucide-react';
 import type { MapDoc, MapItem, MapLine, SessionData, Team } from '../types';
+import { MAP_ICON } from '../components/icons';
 import { useNow, useSession } from '../session-context';
 import { EMPTY_MAP, saveMap, subscribeMap } from '../lib/session';
 import { compressImage, MAP_CATS, MAP_COLORS, MAP_TYPES } from '../lib/mapTypes';
@@ -251,30 +253,30 @@ export function MapView() {
     <div className="map-view">
       <div className="map-toolbar">
         <button className={`btn small ${palette ? 'on' : ''}`} onClick={() => setPalette(!palette)}>
-          ☰ 표시물
+          <PanelLeft size={16} /> 표시물
         </button>
         <span className="sep" />
         <button className={`btn small ${mode.kind === 'select' ? 'on' : ''}`} onClick={() => setMode({ kind: 'select' })}>
-          ✋ 선택·이동
+          <Hand size={16} /> 선택·이동
         </button>
         <button
           className={`btn small ${mode.kind === 'draw' && mode.line === 'route' ? 'on' : ''}`}
           onClick={() => setMode({ kind: 'draw', line: 'route' })}
         >
-          ➰ 진입경로
+          <Route size={16} /> 진입경로
         </button>
         <button
           className={`btn small ${mode.kind === 'draw' && mode.line === 'hose' ? 'on' : ''}`}
           onClick={() => setMode({ kind: 'draw', line: 'hose' })}
         >
-          〰 수관
+          <Waves size={16} /> 수관
         </button>
         <span className="sep" />
         <button className="btn small primary" onClick={runAuto} title="건물·화점·진입대를 현황판 정보대로 자동으로 놓습니다">
-          ✨ 자동 배치
+          <Sparkles size={16} /> 자동 배치
         </button>
         <button className="btn small" disabled={busy} onClick={() => fileRef.current?.click()}>
-          🖼 {busy ? '올리는 중…' : map.bg ? '배경 바꾸기' : '도면·지도 올리기'}
+          <ImageUp size={16} /> {busy ? '올리는 중…' : map.bg ? '배경 바꾸기' : '도면·지도 올리기'}
         </button>
         <input
           ref={fileRef}
@@ -305,24 +307,24 @@ export function MapView() {
             </button>
           </>
         )}
-        <label className="check small">
-          <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} /> 격자
-        </label>
+        <button className={`btn small ${grid ? 'on-soft' : ''}`} onClick={() => setGrid(!grid)} aria-pressed={grid}>
+          <Grid3x3 size={16} /> 격자
+        </button>
         <span className="grow" />
         <div className="zoom">
-          <button className="btn small" onClick={() => zoomBy(1 / 1.4)} aria-label="축소">
-            −
+          <button className="btn small icon-only" onClick={() => zoomBy(1 / 1.4)} aria-label="축소">
+            <Minus size={16} />
           </button>
           <span>{Math.round(view.z * 100)}%</span>
-          <button className="btn small" onClick={() => zoomBy(1.4)} aria-label="확대">
-            +
+          <button className="btn small icon-only" onClick={() => zoomBy(1.4)} aria-label="확대">
+            <Plus size={16} />
           </button>
-          <button className="btn small ghost" onClick={() => setCam({ z: 1, cx: W / 2, cy: H / 2 })}>
-            전체
+          <button className="btn small icon-only" onClick={() => setCam({ z: 1, cx: W / 2, cy: H / 2 })} aria-label="전체 보기" title="전체 보기">
+            <Maximize size={16} />
           </button>
         </div>
         <button className="btn small" onClick={print}>
-          🖨 인쇄
+          <Printer size={16} /> 인쇄
         </button>
       </div>
 
@@ -340,9 +342,9 @@ export function MapView() {
                   onClick={() => setMode({ kind: 'place', type: 'team', teamId: t.id })}
                   title={placedTeam.has(t.id) ? '이미 배치됨' : `${teamTitle(t)} 놓기`}
                 >
-                  <span className="pdot" style={{ background: t.color }} />
+                  <HardHat size={16} style={{ color: t.color }} />
                   {t.name}
-                  {placedTeam.has(t.id) && <small>✓</small>}
+                  {placedTeam.has(t.id) && <small>배치됨</small>}
                 </button>
               ))}
             </div>
@@ -356,7 +358,9 @@ export function MapView() {
                       className={`pal ${mode.kind === 'place' && mode.type === k && !mode.teamId ? 'on' : ''}`}
                       onClick={() => setMode({ kind: 'place', type: k })}
                     >
-                      <span>{MAP_TYPES[k].icon}</span>
+                      <span className="pal-ic" style={{ background: MAP_TYPES[k].color }}>
+                        <MapTypeIcon type={k} size={18} />
+                      </span>
                       {MAP_TYPES[k].short}
                     </button>
                   ))}
@@ -402,8 +406,11 @@ export function MapView() {
               <marker id="arrow-red" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
                 <path d="M0,0 L10,5 L0,10 z" fill="#d50000" />
               </marker>
+              <filter id="sh" x="-20%" y="-20%" width="140%" height="160%">
+                <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#0f172a" floodOpacity="0.28" />
+              </filter>
               <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M40 0H0V40" fill="none" stroke="#cfd8dc" strokeWidth="1" />
+                <path d="M40 0H0V40" fill="none" stroke="#e2e8f0" strokeWidth="1" />
               </pattern>
             </defs>
             <rect x={0} y={0} width={W} height={H} fill="#fff" />
@@ -435,7 +442,7 @@ export function MapView() {
           {map.items.length === 0 && map.lines.length === 0 && loaded && (
             <div className="map-empty">
               <p>
-                <b>✨ 자동 배치</b>를 누르면 현황판의 건물·화점·진입대가 바로 놓입니다.
+                <Sparkles size={16} /> <b>자동 배치</b>를 누르면 현황판의 건물·화점·진입대가 바로 놓입니다.
               </p>
               <p className="hint">도면이나 네이버지도 캡처 사진을 [도면·지도 올리기]로 넣으면 그 위에 표시됩니다.</p>
             </div>
@@ -447,7 +454,7 @@ export function MapView() {
             {sel && <Inspector it={sel} data={data} now={now} onPatch={patchSel} />}
             {selLine && <p>{selLine.kind === 'hose' ? '수관' : '진입경로'} 선택됨</p>}
             <button className="btn danger small block" onClick={removeSelected}>
-              🗑 삭제
+              <Trash2 size={16} /> 삭제
             </button>
             <button className="btn ghost small block" onClick={() => setSelId(null)}>
               닫기
@@ -468,7 +475,7 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
   const x = it.x - w / 2;
   const y = it.y - h / 2;
   const selRect = selected && (
-    <rect className="no-print" x={x - 6} y={y - 6} width={w + 12} height={h + 12} rx={8} fill="none" stroke="#2962ff" strokeWidth={3} strokeDasharray="8 5" />
+    <rect className="no-print" x={x - 6} y={y - 6} width={w + 12} height={h + 12} rx={8} fill="none" stroke="#2563eb" strokeWidth={3} strokeDasharray="8 5" />
   );
 
   if (it.type === 'building' || it.type === 'road') {
@@ -484,7 +491,8 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
     }
     return (
       <g data-id={it.id}>
-        <rect x={x} y={y} width={w} height={h} rx={4} fill={color} fillOpacity={it.type === 'road' ? 0.55 : 0.18} stroke={color} strokeWidth={3} />
+        <rect x={x} y={y} width={w} height={h} rx={8} fill={color} fillOpacity={it.type === 'road' ? 0.55 : 0.1} stroke={color} strokeWidth={2.5} />
+        {it.type === 'building' && <path d={`M${x} ${y + 30}V${y + 8}a8 8 0 0 1 8-8H${x + w - 8}a8 8 0 0 1 8 8V${y + 30}Z`} fill={color} />}
         {floors.map((f, i) => {
           const fy = y + 34 + i * band;
           const hot = f === fireFloor;
@@ -494,7 +502,7 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
               {(hot || tc) && <rect x={x + 2} y={fy} width={w - 4} height={band} fill={hot ? '#ff1744' : tc} fillOpacity={hot ? 0.28 : 0.16} />}
               {i > 0 && <line x1={x} y1={fy} x2={x + w} y2={fy} stroke={color} strokeOpacity={0.35} strokeWidth={1} />}
               {band >= 11 && (
-                <text x={x + 6} y={fy + band / 2 + 4} fontSize={Math.min(13, band - 2)} fill="#37474f" fontWeight={hot || tc ? 800 : 500}>
+                <text x={x + 8} y={fy + band / 2 + 4} fontSize={Math.min(13, band - 2)} fill={hot ? '#b91c1c' : '#334155'} fontWeight={hot || tc ? 700 : 500}>
                   {floorLabel(data.buildings[bi], data.states[bi], f)}
                 </text>
               )}
@@ -502,12 +510,12 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
           );
         })}
         {it.type === 'road' && <line x1={x + 10} y1={it.y} x2={x + w - 10} y2={it.y} stroke="#fff" strokeWidth={3} strokeDasharray="18 12" />}
-        <text x={x + 10} y={y + 26} fontSize={22} fontWeight={700} fill={it.type === 'road' ? '#fff' : '#263238'}>
-          {it.type === 'building' ? '🏢 ' : ''}
+        {it.type === 'building' && <Building2 x={x + 9} y={y + 5} size={20} color="#fff" strokeWidth={2.2} />}
+        <text x={it.type === 'building' ? x + 36 : x + 12} y={it.type === 'building' ? y + 22 : it.y + 6} fontSize={18} fontWeight={700} fill="#fff">
           {it.label || t.label}
         </text>
         {selRect}
-        {selected && <rect className="no-print" data-id={it.id} data-role="resize" x={x + w - 14} y={y + h - 14} width={28} height={28} rx={4} fill="#2962ff" />}
+        {selected && <rect className="no-print" data-id={it.id} data-role="resize" x={x + w - 14} y={y + h - 14} width={28} height={28} rx={4} fill="#2563eb" />}
       </g>
     );
   }
@@ -519,10 +527,8 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
           <animate attributeName="r" values="30;46;30" dur="1.4s" repeatCount="indefinite" />
           <animate attributeName="fill-opacity" values="0.35;0.05;0.35" dur="1.4s" repeatCount="indefinite" />
         </circle>
-        <circle cx={it.x} cy={it.y} r={26} fill="#d50000" stroke="#fff" strokeWidth={3} />
-        <text x={it.x} y={it.y + 10} fontSize={28} textAnchor="middle">
-          🔥
-        </text>
+        <circle cx={it.x} cy={it.y} r={26} fill="#dc2626" stroke="#fff" strokeWidth={3} filter="url(#sh)" />
+        <Flame x={it.x - 15} y={it.y - 16} size={30} color="#fff" strokeWidth={2.2} />
         <Label x={it.x} y={it.y + 52} text={it.label || '화점(추정)'} color="#d50000" />
         {selRect}
       </g>
@@ -555,15 +561,17 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
           height={h + 12}
           rx={12}
           fill={team.color}
-          stroke={lv === 'danger' ? '#b71c1c' : lv === 'warning' ? '#ff6d00' : '#fff'}
-          strokeWidth={lv === 'danger' || lv === 'warning' ? 6 : 3}
+          filter="url(#sh)"
+          stroke={lv === 'danger' ? '#b91c1c' : lv === 'warning' ? '#f97316' : '#fff'}
+          strokeWidth={lv === 'danger' || lv === 'warning' ? 6 : 2.5}
         >
           {lv === 'danger' && <animate attributeName="stroke-opacity" values="1;0.2;1" dur="0.8s" repeatCount="indefinite" />}
         </rect>
-        <text x={it.x} y={y + 24} fontSize={20} fontWeight={800} textAnchor="middle" fill="#fff">
-          ⛑️ {team.name}
+        <HardHat x={it.x - 46} y={y + 7} size={22} color="#fff" strokeWidth={2.2} />
+        <text x={it.x + 12} y={y + 25} fontSize={19} fontWeight={800} textAnchor="middle" fill="#fff">
+          {team.name}
         </text>
-        <text x={it.x} y={y + 48} fontSize={15} textAnchor="middle" fill="#fff">
+        <text x={it.x} y={y + 49} fontSize={14} fontWeight={500} textAnchor="middle" fill="#fff" fillOpacity={0.92}>
           {sub}
         </text>
         {team.task && <Label x={it.x} y={y + h + 34} text={team.task} color={team.color} />}
@@ -583,11 +591,9 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
 
   return (
     <g data-id={it.id}>
-      <rect x={x} y={y} width={w} height={h} rx={10} fill={color} stroke="#fff" strokeWidth={2} />
-      <text x={x + 8} y={it.y + 8} fontSize={22}>
-        {t.icon}
-      </text>
-      <text x={x + 38} y={it.y + 7} fontSize={17} fontWeight={700} fill="#fff">
+      <rect x={x} y={y} width={w} height={h} rx={12} fill={color} stroke="#fff" strokeWidth={2} filter="url(#sh)" />
+      <MapTypeIcon type={it.type} x={it.x - 13} y={y + 8} size={26} color="#fff" strokeWidth={2.2} />
+      <text x={it.x} y={y + h - 10} fontSize={14} fontWeight={700} textAnchor="middle" fill="#fff">
         {(it.label || t.short).slice(0, 6)}
       </text>
       {selRect}
@@ -600,7 +606,7 @@ function Label({ x, y, text, color, big }: { x: number; y: number; text: string;
   const w = Math.max(40, Array.from(text).length * fs * 0.95 + 16);
   return (
     <g>
-      <rect x={x - w / 2} y={y - fs - 2} width={w} height={fs + 12} rx={6} fill="#fff" stroke={color} strokeWidth={2} />
+      <rect x={x - w / 2} y={y - fs - 2} width={w} height={fs + 12} rx={8} fill="#fff" stroke={color} strokeWidth={1.5} filter="url(#sh)" />
       <text x={x} y={y + 2} fontSize={fs} fontWeight={700} textAnchor="middle" fill={color}>
         {text}
       </text>
@@ -618,15 +624,23 @@ function Inspector({ it, data, now, onPatch }: { it: MapItem; data: SessionData;
     const lv = teamLevel(team, data.timerSettings, now);
     return (
       <div className="insp">
-        <h3 style={{ color: team.color }}>⛑️ {teamTitle(team)}</h3>
+        <h3 style={{ color: team.color }}>
+          <HardHat size={18} /> {teamTitle(team)}
+        </h3>
         <p>
           <span className="tlevel" style={{ background: LEVEL[lv].color }}>
             {LEVEL[lv].label}
           </span>{' '}
           {mmss(teamElapsed(team, now))}
         </p>
-        <p>📍 {teamPlace(data.buildings, data.states, team.floorKey) || '위치 미지정'}</p>
-        {team.task && <p>🛠 {team.task}</p>}
+        <p>
+          <MapPin size={15} /> {teamPlace(data.buildings, data.states, team.floorKey) || '위치 미지정'}
+        </p>
+        {team.task && (
+          <p>
+            <Wrench size={15} /> {team.task}
+          </p>
+        )}
         <p className="hint">대 정보는 현황판 → 진입대 탭에서 바꿉니다.</p>
       </div>
     );
@@ -634,7 +648,10 @@ function Inspector({ it, data, now, onPatch }: { it: MapItem; data: SessionData;
   return (
     <div className="insp">
       <h3>
-        {t?.icon} {t?.label ?? it.type}
+        <span className="pal-ic" style={{ background: it.color ?? t?.color }}>
+          <MapTypeIcon type={it.type} size={16} />
+        </span>
+        {t?.label ?? it.type}
       </h3>
       <label className="field">
         <span>표시 이름</span>
@@ -746,4 +763,9 @@ function teamLegendHtml(d: SessionData, now: number) {
     )
     .join('');
   return rows ? `<h2>진입대 현황</h2><table><thead><tr><th>대</th><th>위치</th><th>임무</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table>` : '';
+}
+
+function MapTypeIcon({ type, ...rest }: { type: string } & import('lucide-react').LucideProps) {
+  const I = MAP_ICON[type] ?? Flame;
+  return <I {...rest} />;
 }
