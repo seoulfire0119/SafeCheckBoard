@@ -3,7 +3,7 @@ import { Building2, CarFront, ChevronDown, Flame, HardHat, Minus, Plus, StickyNo
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending, isParking, rooftopFloor, STATUS, unitLabel } from '../lib/building';
-import { LEVEL, teamElapsed, teamLevel, teamMain, teamsByFloor, teamSub } from '../lib/teams';
+import { LEVEL, teamElapsed, teamLevel, teamMain, teamsByFloor } from '../lib/teams';
 import { mmss } from '../lib/format';
 import { Modal } from './Modal';
 import { WheelchairIcon } from './WheelchairIcon';
@@ -53,11 +53,13 @@ export function BuildingCard(props: {
   }
 
   const cols = b.defaultUnits;
+  const hasTeams = data.teams.some((t) => t.status !== 'waiting' && t.floorKey.startsWith(`${idx}_`));
   const gridStyle: CSSProperties = {
-    gridTemplateColumns: `minmax(46px,auto) 34px repeat(${cols}, minmax(80px, 1fr)) minmax(0, auto)`,
+    gridTemplateColumns: `minmax(56px,auto) 40px repeat(${cols}, minmax(140px, 1fr)) ${hasTeams ? '78px' : '0px'}`,
   };
   // 호수(1501호)가 잘리지 않을 만큼은 넓게 — 건물이 많으면 옆으로 밀어서 봄
-  const minWidth = 46 + 34 + cols * 84 + 40;
+  // 칸 + 칸 사이 간격(5px) + 안쪽 여백까지 더해서 옆으로 넘치지 않게
+  const minWidth = 56 + 40 + cols * 140 + (hasTeams ? 78 : 0) + (cols + 3) * 5 + 24;
 
   return (
     <section className="bcard" style={{ minWidth: Math.min(minWidth, 900), flexGrow: cols + 3, flexShrink: 0 }}>
@@ -202,8 +204,9 @@ export function BuildingCard(props: {
                         style={{ background: t.color }}
                         title={`${t.name} ${t.unit} ${t.task} · ${LEVEL[lv].label}`}
                       >
-                        <HardHat size={13} /> {teamMain(t)}
-                        {teamSub(t) && <small>{teamSub(t)}</small>}
+                        <b>
+                          <HardHat size={12} /> {teamMain(t)}
+                        </b>
                         <i>{mmss(teamElapsed(t, now))}</i>
                       </span>
                     );
@@ -294,10 +297,10 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
       <span className="unum">
-        {u.vulnerable && <WheelchairIcon size={26} className="uv" aria-label="피난약자" />}
+        {u.vulnerable && <WheelchairIcon size={32} className="uv" aria-label="피난약자" />}
         <span className="unum-txt">{u.label || unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       </span>
-      {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
+      {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{SHORT[u.status] ?? st.label}</span>}
       {!u.memoPinned && u.memo && <StickyNote size={12} className="um" aria-label="메모 있음" />}
       {props.origin && <Flame size={16} className="uorigin" aria-label="화점" />}
     </button>
@@ -339,3 +342,6 @@ function StatDialog(props: { label: string; value: number; onClose: () => void; 
     </Modal>
   );
 }
+
+// 칸 안에 호수 옆에 나란히 쓰는 짧은 상태 이름
+const SHORT: Partial<Record<Unit['status'], string>> = { fireFalseAlarm: '연소확대', resourceBase: '자원대기' };

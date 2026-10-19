@@ -2904,3 +2904,237 @@ a.ai-ladder-bar .ai-ladder-cta {
 .ucell.vuln {
   padding: 5px 6px;
 }
+
+/* ══ 보드 칸·글자 크게 (현장에서 멀리서도 읽히게) ══ */
+.bgrid {
+  grid-auto-rows: minmax(56px, 1fr);
+  gap: 5px;
+}
+.ucell {
+  border-radius: 10px;
+}
+.unum,
+.ucell.vuln .unum {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.ust,
+.umemo {
+  font-size: 12px;
+}
+.flabel {
+  font-size: 16px;
+  font-weight: 800;
+}
+.allbtn {
+  font-size: 12px;
+}
+.vbadge {
+  font-size: 13px;
+  top: -9px;
+  right: -9px;
+}
+.tpill {
+  font-size: 14px;
+  padding: 4px 5px 4px 10px;
+}
+.tpill i {
+  font-size: 13px;
+}
+.hidden-row {
+  font-size: 14px;
+  min-height: 38px;
+}
+.ucell .unum .uv,
+.ucell.vuln .unum .uv {
+  width: 32px;
+  height: 32px;
+}
+.um {
+  width: 15px;
+  height: 15px;
+}
+.uorigin {
+  width: 20px;
+  height: 20px;
+}
+@media (max-width: 640px) {
+  .bgrid {
+    grid-auto-rows: minmax(48px, 1fr);
+  }
+  .unum,
+  .ucell.vuln .unum {
+    font-size: 15px;
+  }
+}
+
+/* ══ 칸 안 글자를 가로로: [호수] [상태] ══ */
+.ucell {
+  flex-direction: row;
+  gap: 7px;
+  padding: 3px 8px;
+}
+.ust,
+.umemo {
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 0.95;
+  min-width: 0;
+}
+.umemo {
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+/* 피난약자 칸은 큰 휠체어 + 호수 (상태는 칸 색으로) */
+.ucell.vuln {
+  gap: 4px;
+  padding: 3px 6px;
+}
+@media (max-width: 640px) {
+  .ucell {
+    flex-direction: column;
+    gap: 0;
+  }
+  .ust {
+    font-size: 11px;
+  }
+}
+
+/* ══ 글자가 칸 크기에 맞춰 커지게 (칸이 크면 글자도 크게) ══
+   cqi = 칸 너비의 1%, cqh = 칸 높이의 1% */
+.ucell {
+  container-type: size;
+  gap: 4%;
+  padding: 2px 6px;
+}
+.ucell .unum {
+  font-size: clamp(14px, min(40cqh, 13.5cqi), 40px);
+}
+.ucell .ust,
+.ucell .umemo {
+  font-size: clamp(11px, min(28cqh, 9.5cqi), 26px);
+}
+/* 상태 글자가 없는 칸(미확인)은 호수를 더 크게 */
+.ucell.st-unknown .unum {
+  font-size: clamp(15px, min(46cqh, 19cqi), 44px);
+}
+/* 피난약자: 휠체어 + 호수 (상태는 칸 색) */
+.ucell.vuln .unum {
+  font-size: clamp(14px, min(40cqh, 17cqi), 40px);
+}
+.ucell .unum .uv,
+.ucell.vuln .unum .uv {
+  width: 1.35em;
+  height: 1.35em;
+}
+.ucell.empty {
+  container-type: normal;
+}
+/* 진입대: 이름 / 경과시간 두 줄로 좁게 */
+.fteams {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  justify-content: center;
+}
+.tpill {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 2px 4px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  min-width: 0;
+}
+.tpill b {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpill i {
+  font-size: 12px;
+  padding: 0 5px;
+}
+@media (max-width: 640px) {
+  .ucell {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+/* 오른쪽 패널 접기 */
+.status-view.folded {
+  grid-template-columns: 1fr 56px;
+}
+.side-mini {
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+}
+.mini-tab {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+}
+.mini-tab:hover {
+  border-color: var(--line-2);
+}
+.mini-tab .cnt,
+.mini-tab .badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 11px;
+}
+.fold-btn {
+  flex: 0 0 40px !important;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+}
+.fold-btn:hover {
+  color: var(--brand);
+}
+@media (max-width: 900px) {
+  .status-view.folded {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 56px;
+  }
+  .side-mini {
+    flex-direction: row;
+    justify-content: center;
+  }
+}
+
+/* 호수를 크게(우선), 상태 글자는 그 옆에 조금 작게 */
+.bgrid {
+  grid-auto-rows: minmax(60px, 1fr);
+}
+.ucell .unum {
+  font-size: clamp(15px, min(42cqh, 16.5cqi), 44px);
+}
+.ucell .ust,
+.ucell .umemo {
+  font-size: clamp(11px, min(28cqh, 9cqi), 26px);
+}
+.ucell {
+  gap: 3%;
+  padding: 2px 5px;
+}
+
+.ucell .ust,
+.ucell .umemo {
+  font-size: clamp(13px, min(30cqh, 9.5cqi), 26px);
+}
