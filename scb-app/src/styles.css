@@ -2878,3 +2878,18 @@ a.ai-ladder-bar .ai-ladder-cta {
 .ucell {
   padding: 2px 1px;
 }
+
+/* 피난약자: 칸 높이만큼 큰 아이콘 + 바로 옆 호수, 상태는 칸 색으로 */
+.ucell.vuln .ust {
+  display: none;
+}
+.ucell.vuln .unum {
+  font-size: 13px;
+  gap: 1px;
+}
+.ucell .unum .uv,
+.ucell.vuln .unum .uv {
+  width: 30px;
+  height: 30px;
+  margin: -4px 0;
+}

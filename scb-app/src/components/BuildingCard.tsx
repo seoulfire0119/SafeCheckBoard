@@ -53,10 +53,10 @@ export function BuildingCard(props: {
 
   const cols = b.defaultUnits;
   const gridStyle: CSSProperties = {
-    gridTemplateColumns: `minmax(46px,auto) 34px repeat(${cols}, minmax(62px, 1fr)) minmax(0, auto)`,
+    gridTemplateColumns: `minmax(46px,auto) 34px repeat(${cols}, minmax(80px, 1fr)) minmax(0, auto)`,
   };
   // 호수(1501호)가 잘리지 않을 만큼은 넓게 — 건물이 많으면 옆으로 밀어서 봄
-  const minWidth = 46 + 34 + cols * 66 + 40;
+  const minWidth = 46 + 34 + cols * 84 + 40;
 
   return (
     <section className="bcard" style={{ minWidth: Math.min(minWidth, 900), flexGrow: cols + 3, flexShrink: 0 }}>
@@ -293,7 +293,7 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
       <span className="unum">
-        {u.vulnerable && <Accessibility size={15} strokeWidth={3} className="uv" aria-label="피난약자" />}
+        {u.vulnerable && <Accessibility size={30} strokeWidth={2.6} className="uv" aria-label="피난약자" />}
         <span className="unum-txt">{u.label || unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       </span>
       {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
