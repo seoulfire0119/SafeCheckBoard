@@ -4,3 +4,5 @@ dist/
 .firebase/
 *.log
 *.tsbuildinfo
+# Firebase 웹 설정(.env)은 공개 값이라 저장소에 둔다
+!.env

@@ -28,8 +28,7 @@ Firebase 프로젝트 `safecheckboard`(Firestore + Hosting)를 그대로 쓴다.
 ## 개발
 
 ```bash
-npm install
-cp .env.example .env.local        # Firebase 웹 설정 값 채우기 (Firebase 콘솔 → 프로젝트 설정 → 내 앱)
+npm install                       # Firebase 설정은 .env 에 들어 있음
 npm run dev                       # http://localhost:5173
 ```
 
