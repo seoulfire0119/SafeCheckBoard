@@ -9,6 +9,7 @@ import { BuildingForm } from './screens/BuildingForm';
 import { Board } from './screens/Board';
 import { SessionProvider, useToast } from './session-context';
 import { usingEmulator } from './firebase';
+import { GoogleLoginButton } from './components/GoogleLoginButton';
 
 type Phase = { kind: 'home' } | { kind: 'setup' } | { kind: 'session'; code: string };
 
@@ -132,6 +133,8 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
   return (
     <div className="home">
       <Logo />
+      <GoogleLoginButton />
+      <p className="hint">여러 PC에서 현장을 관리하려면 먼저 Google 계정으로 로그인하세요. 기존 현장의 관리 계정은 119gpt1@gmail.com입니다.</p>
       {props.me && (
         <button className="me-chip big" onClick={props.onEditMe}>
           <UserRound size={18} /> {identityText(props.me)} <small>변경</small>
@@ -255,9 +258,9 @@ function SessionLoader(props: { code: string; me: Identity; setMe: (v: Identity)
   if (data.buildings.length === 0)
     return (
       <div className="center-msg">
-        <p>세션 호스트가 건물을 설정하는 중입니다…</p>
+        <p>이전 현장에 저장된 건물 정보가 없습니다. 새 현장을 시작해 주세요.</p>
         <p className="code-big">{code}</p>
-        <WaitForBuildings code={code} onReady={setData} />
+        <button className="btn" onClick={onLeave}>처음으로</button>
       </div>
     );
 
@@ -266,9 +269,4 @@ function SessionLoader(props: { code: string; me: Identity; setMe: (v: Identity)
       <Board onLeave={onLeave} />
     </SessionProvider>
   );
-}
-
-function WaitForBuildings({ code, onReady }: { code: string; onReady: (d: SessionData) => void }) {
-  useEffect(() => subscribeSession(code, (d) => d && d.buildings.length > 0 && onReady(d), () => {}), [code, onReady]);
-  return null;
 }

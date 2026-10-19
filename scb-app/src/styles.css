@@ -35,6 +35,19 @@
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
 }
+.in-session { --bar: 0px; }
+.in-session .ai-ladder-bar { display: none; }
+.safety-strip { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 6px 12px; background: #fff; border-bottom: 1px solid var(--line); flex: none; font-size: 14px; }
+.save-indicator { display: flex; align-items: center; gap: 8px; color: #166534; }
+.save-indicator.failed { color: #b91c1c; font-weight: 700; }
+.read-only-notice { margin: 0; padding: 6px 12px; background: #fff7ed; font-size: 13px; flex: none; }
+.access-list { list-style: none; padding: 0; }
+.access-list li { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 10px 0; overflow-wrap: anywhere; }
+.access-list code { flex: 1 1 220px; overflow-wrap: anywhere; }
+.access-list select { width: 100px; }
+.large-text .ucell { font-size: 1.25em; }
+.large-text .ucell .unum { font-size: 1.25em; }
+.view[data-readonly="true"] .leaflet-marker-icon { pointer-events: none; }
 * {
   box-sizing: border-box;
 }
@@ -752,11 +765,12 @@ a.ai-ladder-bar .ai-ladder-cta {
 /* ── 보드 틀 ─────────────────────────────────────────── */
 .board {
   height: 100%;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 .topbar {
+  flex: none;
   background: linear-gradient(180deg, #c2410c, #b03a0b);
   color: #fff;
   display: flex;
@@ -879,6 +893,7 @@ a.ai-ladder-bar .ai-ladder-cta {
   text-align: center;
 }
 .view {
+  flex: 1;
   min-height: 0;
   overflow: hidden;
 }

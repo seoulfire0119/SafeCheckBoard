@@ -300,7 +300,8 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
         {u.vulnerable && <WheelchairIcon size={32} className="uv" aria-label="피난약자" />}
         <span className="unum-txt">{u.label || unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       </span>
-      {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{SHORT[u.status] ?? st.label}</span>}
+      <span className="ust">{SHORT[u.status] ?? st.label}</span>
+      {u.memoPinned && u.memo && <span className="umemo">{u.memo}</span>}
       {!u.memoPinned && u.memo && <StickyNote size={12} className="um" aria-label="메모 있음" />}
       {props.origin && <Flame size={16} className="uorigin" aria-label="화점" />}
     </button>

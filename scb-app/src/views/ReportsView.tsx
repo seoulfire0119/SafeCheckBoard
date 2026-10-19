@@ -5,7 +5,7 @@ import { useSession } from '../session-context';
 import { deleteBriefing, saveBriefing, saveField, subscribeBriefings, type BriefingRecord } from '../lib/session';
 import { useSynced } from '../lib/useSynced';
 import { copyText, printHtml, table } from '../lib/exporter';
-import { dateTime, escapeHtml, hhmm } from '../lib/format';
+import { dateTime, escapeHtml, hhmm, uid } from '../lib/format';
 import { teamPlace, teamTitle } from '../lib/teams';
 import { STATUS, floorLabel, unitLabel } from '../lib/building';
 
@@ -136,7 +136,7 @@ const EQUIP_DEFS: FieldDef[] = [
 function IncidentForm() {
   const { code, data, log, toast } = useSession();
   const save = useCallback(
-    (v: Record<string, string>) => saveField(code, 'incident', v).catch((e: Error) => toast(`저장 실패: ${e.message}`, 'error')),
+    (v: Record<string, string>, base: Record<string, string>) => saveField(code, 'incident', v, base).catch((e: Error) => { toast(`저장 실패: ${e.message}`, 'error'); throw e; }),
     [code, toast],
   );
   const [v, setV, flush] = useSynced<Record<string, string>>(data.incident, save);
@@ -149,8 +149,9 @@ function IncidentForm() {
   // 자동 집계값도 함께 저장해 둔다 (브리핑 자동채우기·Flutter 호환)
   const set = (k: string, val: string) => setV((p) => ({ ...p, [k]: val, dead: String(dead), injured: String(injured), personTotal: String(personTotal) }));
   const commit = (_k: string, label: string, before: string, after: string) => {
-    flush();
-    if (before !== after) log('보고서', `재난발생현황 ${label}: ${after || '(지움)'}`);
+    void flush().then((saved) => {
+      if (saved && before !== after) log('보고서', `재난발생현황 ${label}: ${after || '(지움)'}`);
+    });
   };
 
   const text = () =>
@@ -210,9 +211,9 @@ const HIGHLIGHTS = ['', '#ffcdd2', '#fff9c4', '#c8e6c9', '#bbdefb'];
 function TimelineTable() {
   const { code, data, log, toast } = useSession();
   const save = useCallback(
-    (rows: ActionRow[]) =>
-      saveField(code, 'disasterResponse', { ...data.disasterResponse, actionRows: rows }).catch((e: Error) => toast(`저장 실패: ${e.message}`, 'error')),
-    [code, data.disasterResponse, toast],
+    (rows: ActionRow[], base: ActionRow[]) =>
+      saveField(code, 'disasterResponse', { actionRows: rows }, { actionRows: base }).then((v) => v.actionRows).catch((e: Error) => { toast(`저장 실패: ${e.message}`, 'error'); throw e; }),
+    [code, toast],
   );
   const [rows, setRows, flush] = useSynced<ActionRow[]>(data.disasterResponse.actionRows, save);
   const focusVal = useRef('');
@@ -255,8 +256,9 @@ function TimelineTable() {
                   onFocus={() => (focusVal.current = r.content)}
                   onChange={(e) => set(i, 'content', e.target.value)}
                   onBlur={(e) => {
-                    flush();
-                    if (e.target.value !== focusVal.current) log('보고서', `조치현황 ${r.time} ${e.target.value}`);
+                    const value = e.target.value;
+                    const changed = value !== focusVal.current;
+                    void flush().then((saved) => { if (saved && changed) log('보고서', `조치현황 ${r.time} ${value}`); });
                   }}
                 />
               </td>
@@ -290,7 +292,7 @@ function TimelineTable() {
           ))}
         </tbody>
       </table>
-      <button className="btn block dashed" onClick={() => setRows((rs) => [...rs, { time: hhmm(Date.now()), content: '' }])}>
+      <button className="btn block dashed" onClick={() => setRows((rs) => [...rs, { id: uid(), time: hhmm(Date.now()), content: '' }])}>
         <Plus size={16} /> 행 추가 (지금 시각)
       </button>
     </div>
@@ -339,7 +341,7 @@ function ImportFromLog({ onPick }: { onPick: (rows: ActionRow[]) => void }) {
           className="btn small primary"
           disabled={!picked.size}
           onClick={() => {
-            onPick(cands.filter((l) => picked.has(l.id)).map((l) => ({ time: hhmm(l.at), content: l.text })));
+            onPick(cands.filter((l) => picked.has(l.id)).map((l) => ({ id: uid(), time: hhmm(l.at), content: l.text })));
             setPicked(new Set());
             setOpen(false);
           }}
@@ -355,15 +357,15 @@ function ImportFromLog({ onPick }: { onPick: (rows: ActionRow[]) => void }) {
 function AgencyTable() {
   const { code, data, log, toast } = useSession();
   const save = useCallback(
-    (rows: AgencyRow[]) =>
-      saveField(code, 'disasterResponse', { ...data.disasterResponse, agencyRows: rows }).catch((e: Error) => toast(`저장 실패: ${e.message}`, 'error')),
-    [code, data.disasterResponse, toast],
+    (rows: AgencyRow[], base: AgencyRow[]) =>
+      saveField(code, 'disasterResponse', { agencyRows: rows }, { agencyRows: base }).then((v) => v.agencyRows).catch((e: Error) => { toast(`저장 실패: ${e.message}`, 'error'); throw e; }),
+    [code, toast],
   );
   const [rows, setRows, flush] = useSynced<AgencyRow[]>(data.disasterResponse.agencyRows, save);
   const focusVal = useRef('');
   const set = (i: number, k: keyof AgencyRow, val: string) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: val } : r)));
   const total = rows.reduce((s, r) => s + n(r.person), 0);
-  const cols: { k: keyof AgencyRow; label: string; ph: string; w?: number }[] = [
+  const cols: { k: Exclude<keyof AgencyRow, 'id'>; label: string; ph: string; w?: number }[] = [
     { k: 'agency', label: '기관명', ph: '마포경찰서', w: 160 },
     { k: 'person', label: '인원(명)', ph: '12', w: 80 },
     { k: 'arrive', label: '도착시간', ph: '14:50', w: 90 },
@@ -409,8 +411,9 @@ function AgencyTable() {
                     onFocus={() => (focusVal.current = r[c.k])}
                     onChange={(e) => set(i, c.k, e.target.value)}
                     onBlur={(e) => {
-                      flush();
-                      if (e.target.value !== focusVal.current) log('보고서', `유관기관 ${r.agency || `#${i + 1}`} ${c.label}: ${e.target.value}`);
+                      const value = e.target.value;
+                      const changed = value !== focusVal.current;
+                      void flush().then((saved) => { if (saved && changed) log('보고서', `유관기관 ${r.agency || `#${i + 1}`} ${c.label}: ${value}`); });
                     }}
                   />
                 </td>
@@ -424,7 +427,7 @@ function AgencyTable() {
           ))}
         </tbody>
       </table>
-      <button className="btn block dashed" onClick={() => setRows((rs) => [...rs, { agency: '', person: '', arrive: hhmm(Date.now()), action: '' }])}>
+      <button className="btn block dashed" onClick={() => setRows((rs) => [...rs, { id: uid(), agency: '', person: '', arrive: hhmm(Date.now()), action: '' }])}>
         <Plus size={16} /> 기관 추가
       </button>
     </div>

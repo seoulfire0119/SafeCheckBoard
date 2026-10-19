@@ -27,16 +27,22 @@ Firebase 프로젝트 `safecheckboard`(Firestore + Hosting)를 그대로 쓴다.
 
 ## 개발
 
+다른 PC에서 이어서 개발할 때는 저장소의 **main 브랜치**를 받으세요. `github-old-backup`은 2026년 4월의 옛 Flutter 백업입니다. 최신 앱의 원본은 이 폴더의 `src/`이며, `dist/`는 빌드할 때 생성됩니다. 기존 복제본은 미저장 작업을 보관한 뒤 `git fetch origin`, `git switch main`, `git pull --ff-only origin main`으로 갱신합니다.
+
+새 PC에서는 이 폴더에서 `npm ci`, `npm run dev`를 실행합니다. GitHub Actions 빌드 파일도 추가되어 있으며, main에 올린 뒤 성공한 **Actions → SafeCheckBoard web build → Artifacts**에서 웹 빌드 ZIP을 받을 수 있습니다. 이 ZIP은 HTTP 서버 또는 Firebase Hosting에서 제공해야 하며 index.html을 파일로 더블클릭하는 방식은 지원하지 않습니다.
+
+새 참여자는 열람자로 시작하며 개설자가 편집 권한을 부여합니다. 여러 PC에서 같은 관리 권한을 사용하려면 먼저 Google 로그인 후 새 현장을 만드세요. 기존 현장은 Google 계정 `119gpt1@gmail.com`으로 로그인하면 관리할 수 있습니다. [운영 권한 이전 안내](docs/운영-권한-이전.md)에 이전 방법과 주의사항이 있습니다.
+
 ```bash
-npm install                       # Firebase 설정은 .env 에 들어 있음
+npm ci                            # Firebase 웹 설정은 .env 에 들어 있음
 npm run dev                       # http://localhost:5173
 ```
 
-실제 현장 데이터를 건드리지 않고 시험하려면 로컬 에뮬레이터를 쓴다 (Java 21 필요):
+실제 현장 데이터를 건드리지 않고 시험하려면 로컬 인증·Firestore 에뮬레이터를 쓴다 (Java 21 필요):
 
 ```bash
 echo VITE_USE_EMULATOR=1 > .env.development.local
-npm run emulators                 # 다른 창에서. firestore.rules 를 그대로 적용
+npm run emulators                 # demo-safecheckboard, 운영 데이터와 분리
 npm run dev                       # 화면 왼쪽 아래에 "개발용 · 로컬 에뮬레이터" 표시
 ```
 
@@ -44,7 +50,9 @@ npm run dev                       # 화면 왼쪽 아래에 "개발용 · 로컬
 
 ## 배포
 
-`deploy.bat` — 빌드 → Firestore 규칙 → Hosting 순서로 올린다.
+**이번 버전은 배포 전에 [인증 활성화·기존 세션 이전](docs/운영-권한-이전.md)이 필수입니다.** 이전 완료 후 Windows 명령 프롬프트에서 `set SCB_ACCESS_MIGRATED=1`을 지정해야 deploy.bat을 실행할 수 있습니다. 단순 미리보기 배포도 같은 운영 Firestore에 연결되므로 개발 검증에는 에뮬레이터를 사용하세요.
+
+`deploy.bat` — 빌드 → 인증 설정 → Firestore 규칙·Hosting을 올린다.
 **주의:** Flutter 버전(`../safe_check_board/deploy.bat`)과 같은 사이트(safecheckboard.web.app)를 쓴다.
 나중에 올린 쪽이 화면에 나온다.
 

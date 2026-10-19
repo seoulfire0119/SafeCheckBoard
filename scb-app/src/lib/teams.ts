@@ -2,17 +2,17 @@ import type { Building, BuildingState, SessionData, Team, TeamLevel, TimerSettin
 import { floorLabel, parseFloorKey } from './building';
 
 export function teamElapsed(t: Team, now: number) {
-  if (t.status === 'paused') return t.pausedMs ?? 0;
-  if (t.status === 'active' && t.entryAt != null) return now - t.entryAt;
+  if (t.status !== 'waiting' && t.entryAt != null) return Math.max(0, now - t.entryAt);
+  if (t.status === 'paused') return Math.max(0, t.pausedMs ?? 0);
   return 0;
 }
 
 export function teamLevel(t: Team, s: TimerSettings, now: number): TeamLevel {
-  if (t.status !== 'active') return t.status;
+  if (t.status === 'waiting') return 'waiting';
   const min = teamElapsed(t, now) / 60000;
   if (min >= s.dangerMin) return 'danger';
   if (min >= s.warnMin) return 'warning';
-  return 'active';
+  return t.status;
 }
 
 export const LEVEL: Record<TeamLevel, { label: string; color: string }> = {
@@ -52,10 +52,18 @@ export function teamsByFloor(d: SessionData) {
 }
 
 /** 경고·위험 소리 (Web Audio) */
+let audio: AudioContext | null = null;
+export async function enableAlarmAudio() {
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  audio ??= new Ctx();
+  if (audio.state !== 'running') await audio.resume();
+  if (audio.state !== 'running') throw new Error('경고음을 켤 수 없습니다. 기기 소리 설정을 확인하세요.');
+}
+
 export function beep(danger: boolean) {
   try {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const c = new Ctx();
+    const c = audio;
+    if (!c || c.state !== 'running') return;
     const o = c.createOscillator();
     const g = c.createGain();
     o.connect(g);
@@ -66,7 +74,7 @@ export function beep(danger: boolean) {
     g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.5);
     o.start();
     o.stop(c.currentTime + 0.5);
-    o.onended = () => c.close();
+    o.onended = () => { o.disconnect(); g.disconnect(); };
   } catch {
     /* 소리 못 내는 환경 */
   }

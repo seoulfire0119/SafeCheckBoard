@@ -4,7 +4,7 @@ import type { CasualtyRow } from '../types';
 import { useSession } from '../session-context';
 import { saveField } from '../lib/session';
 import { useSynced } from '../lib/useSynced';
-import { maskName } from '../lib/format';
+import { maskName, uid } from '../lib/format';
 import { copyText, downloadCsv, printHtml, table } from '../lib/exporter';
 
 export const TRIAGE = [
@@ -14,7 +14,7 @@ export const TRIAGE = [
   { key: '비응급환자', color: '#2e7d32', fg: '#fff' },
 ];
 
-const COLS: { key: keyof CasualtyRow; label: string; ph: string; w: string }[] = [
+const COLS: { key: Exclude<keyof CasualtyRow, 'id'>; label: string; ph: string; w: string }[] = [
   { key: 'name', label: '성명(국적)', ph: '홍길동', w: '11%' },
   { key: 'gender', label: '성별', ph: '남/여', w: '6%' },
   { key: 'age', label: '연령', ph: '45', w: '6%' },
@@ -25,12 +25,12 @@ const COLS: { key: keyof CasualtyRow; label: string; ph: string; w: string }[] =
   { key: 'etc', label: '기타', ph: '비고', w: '12%' },
 ];
 
-const emptyRow = (): CasualtyRow => ({ status: '', name: '', gender: '', age: '', found: '', ambul: '', hospital: '', injury: '', etc: '' });
+const emptyRow = (): CasualtyRow => ({ id: uid(), status: '', name: '', gender: '', age: '', found: '', ambul: '', hospital: '', injury: '', etc: '' });
 
 export function CasualtyView() {
   const { code, data, log, toast } = useSession();
   const save = useCallback(
-    (rows: CasualtyRow[]) => saveField(code, 'casualty', { rows }).catch((e: Error) => toast(`저장 실패: ${e.message}`, 'error')),
+    (rows: CasualtyRow[], base: CasualtyRow[]) => saveField(code, 'casualty', { rows }, { rows: base }).then((v) => v.rows).catch((e: Error) => { toast(`저장 실패: ${e.message}`, 'error'); throw e; }),
     [code, toast],
   );
   const [rows, setRows, flush] = useSynced<CasualtyRow[]>(data.casualty.rows, save);
@@ -159,9 +159,10 @@ export function CasualtyView() {
                           onBlur={(e) => {
                             setFocus(null);
                             const v = e.target.value;
-                            flush();
-                            if (v !== focusVal.current)
-                              log('인명피해', `환자 #${i + 1} ${c.label}: ${c.key === 'name' ? maskName(v) : v || '(지움)'}`);
+                            const changed = v !== focusVal.current;
+                            void flush().then((saved) => {
+                              if (saved && changed) log('인명피해', `환자 #${i + 1} ${c.label}: ${c.key === 'name' ? maskName(v) : v || '(지움)'}`);
+                            });
                           }}
                         />
                       </td>

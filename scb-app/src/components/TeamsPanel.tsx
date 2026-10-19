@@ -3,7 +3,7 @@ import { HardHat, MapPin, Pause, Pencil, Play, Plus, Settings, Square, Wrench } 
 import type { Team } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending } from '../lib/building';
-import { beep, LEVEL, teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
+import { beep, enableAlarmAudio, LEVEL, teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
 import { TEAM_COLORS } from '../lib/session';
 import { mmss, uid } from '../lib/format';
 import { Modal } from './Modal';
@@ -22,7 +22,9 @@ export function TeamsPanel() {
     act(
       (d) => {
         const x = d.teams.find((y) => y.id === t.id);
-        if (x) fn(x);
+        if (!x) throw new Error('해당 진입대가 삭제되었습니다.');
+        if (x.status !== t.status || x.entryAt !== t.entryAt) throw new Error('다른 기기에서 진입대 상태를 변경했습니다. 최신 상태를 확인하세요.');
+        fn(x);
       },
       '진입대',
       text,
@@ -78,17 +80,19 @@ export function TeamsPanel() {
                 {t.status === 'waiting' && (
                   <button
                     className="btn small go"
-                    onClick={() =>
-                      update(
+                    onClick={() => {
+                      const enteredAt = Date.now();
+                      return update(
                         t,
                         (x) => {
+                          if (x.status !== 'waiting') return;
                           x.status = 'active';
-                          x.entryAt = Date.now();
+                          x.entryAt = enteredAt;
                           x.pausedMs = null;
                         },
                         `${teamTitle(t)} 진입 — ${place(t)}${t.task ? ` / ${t.task}` : ''}`,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <Play size={15} /> 진입
                   </button>
@@ -107,7 +111,7 @@ export function TeamsPanel() {
                       )
                     }
                   >
-                    <Pause size={15} /> 정지
+                    <Pause size={15} /> 활동 중지 (시간 계속)
                   </button>
                 )}
                 {t.status === 'paused' && (
@@ -117,7 +121,8 @@ export function TeamsPanel() {
                       update(
                         t,
                         (x) => {
-                          x.entryAt = Date.now() - (x.pausedMs ?? 0);
+                          // 체류 시간은 중지 중에도 계속 계산한다.
+                          x.entryAt ??= Date.now() - (x.pausedMs ?? 0);
                           x.pausedMs = null;
                           x.status = 'active';
                         },
@@ -213,7 +218,7 @@ function TeamDialog({ team, onClose }: { team: Team | null; onClose: () => void 
       footer={
         <>
           {team && (
-            <button className="btn danger ghost" onClick={() => setConfirmDel(true)}>
+            <button className="btn danger ghost" disabled={team.status !== 'waiting'} title="철수를 확인한 대만 삭제할 수 있습니다" onClick={() => setConfirmDel(true)}>
               삭제
             </button>
           )}
@@ -269,7 +274,10 @@ function TeamDialog({ team, onClose }: { team: Team | null; onClose: () => void 
           <button
             className="btn danger"
             onClick={() => {
-              act((d) => void (d.teams = d.teams.filter((x) => x.id !== team.id)), '진입대', `대 삭제: ${teamTitle(team)}`);
+              act((d) => {
+                if (d.teams.find((x) => x.id === team.id)?.status !== 'waiting') throw new Error('진입 중인 대는 철수 확인 후 삭제하세요.');
+                d.teams = d.teams.filter((x) => x.id !== team.id);
+              }, '진입대', `대 삭제: ${teamTitle(team)}`);
               onClose();
             }}
           >
@@ -285,7 +293,7 @@ function TimerSettingsDialog({ onClose }: { onClose: () => void }) {
   const { data, act } = useSession();
   const [warn, setWarn] = useState(String(data.timerSettings.warnMin));
   const [danger, setDanger] = useState(String(data.timerSettings.dangerMin));
-  const [sound, setSound] = useState(() => localStorage.getItem('scb.sound') !== '0');
+  const [sound, setSound] = useState(() => { try { return localStorage.getItem('scb.sound') !== '0'; } catch { return true; } });
   return (
     <Modal
       title="진입 타이머 설정"
@@ -331,6 +339,7 @@ function TimerSettingsDialog({ onClose }: { onClose: () => void }) {
       <label className="check">
         <input type="checkbox" checked={sound} onChange={(e) => setSound(e.target.checked)} /> 이 기기에서 경고음 울리기
       </label>
+      <p className="hint">활동 중지 중에도 체류 시간과 경보는 계속됩니다. 시간은 기기 시각을 기준으로 계산합니다. 기기 시각을 자동 설정하고 경고음 테스트를 확인하세요.</p>
     </Modal>
   );
 }
@@ -340,19 +349,27 @@ export function TeamAlarm() {
   const { data, toast } = useSession();
   const now = useNow();
   const prev = useRef<Map<string, string>>(new Map());
+  const lastAlarm = useRef<Map<string, number>>(new Map());
   useEffect(() => {
-    const sound = localStorage.getItem('scb.sound') !== '0';
+    let sound = true;
+    try { sound = localStorage.getItem('scb.sound') !== '0'; } catch { /* unavailable storage */ }
     for (const t of data.teams) {
       const lv = teamLevel(t, data.timerSettings, now);
       const before = prev.current.get(t.id);
-      if (before && before !== lv && (lv === 'warning' || lv === 'danger')) {
+      if (before !== lv && (lv === 'warning' || lv === 'danger')) {
         toast(`[${LEVEL[lv].label}] ${teamTitle(t)} — ${mmss(teamElapsed(t, now))} 경과`, lv === 'danger' ? 'error' : 'info');
         if (sound) beep(lv === 'danger');
-      } else if (sound && (lv === 'warning' || lv === 'danger') && Math.floor(teamElapsed(t, now) / 1000) % 30 === 0) {
+        lastAlarm.current.set(t.id, now);
+      } else if (sound && (lv === 'warning' || lv === 'danger') && now - (lastAlarm.current.get(t.id) ?? 0) >= 30000) {
         beep(lv === 'danger');
+        lastAlarm.current.set(t.id, now);
       }
       prev.current.set(t.id, lv);
     }
   }, [now, data.teams, data.timerSettings, toast]);
-  return null;
+  const [audioReady, setAudioReady] = useState(false);
+  return <button className="alarm-audio btn small" onClick={async () => {
+    try { await enableAlarmAudio(); beep(false); setAudioReady(true); }
+    catch (e) { toast((e as Error).message, 'error'); }
+  }}>{audioReady ? '경고음 테스트' : '경고음 켜기 · 테스트'}</button>;
 }

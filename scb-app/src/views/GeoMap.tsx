@@ -8,7 +8,7 @@ import { useNow, useSession } from '../session-context';
 import { saveField, saveMap } from '../lib/session';
 import { MAP_CATS, MAP_TYPES } from '../lib/mapTypes';
 import { floorKey, floorLabel, floorsDescending, STATUS, unitLabel } from '../lib/building';
-import { teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
+import { teamElapsed, teamLevel, teamMain, teamPlace, teamSub } from '../lib/teams';
 import { mmss, uid } from '../lib/format';
 import { geocode, offsetMeters, reverseGeocode, searchPlace, tileUrl, VWORLD_ATTR, type Place } from '../lib/vworld';
 import { Inspector, MapTypeIcon } from './MapView';
@@ -33,9 +33,13 @@ const emptyGeo = (lat: number, lng: number): GeoState => ({
  * 위치는 위도·경도로 저장되어 모든 기기에서 같은 자리에 보인다.
  */
 export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode }) {
-  const { code, data, log, toast } = useSession();
+  const { code, data, log, toast, canEdit } = useSession();
   const now = useNow();
   const geo = map.geo;
+  const remoteBase = useRef(map);
+  remoteBase.current = map;
+  const editable = useRef(canEdit);
+  editable.current = canEdit;
   const elRef = useRef<HTMLDivElement>(null);
   const lmap = useRef<L.Map | null>(null);
   const layers = useRef<{ sat: L.TileLayer; hyb: L.TileLayer; base: L.TileLayer } | null>(null);
@@ -62,13 +66,16 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   lockedRef.current = geo?.locked ?? false;
 
   const persist = useCallback(
-    (patch: Partial<GeoState>) => saveMap(code, { geo: patch as GeoState }).catch((e: Error) => toast(`작전도 저장 실패: ${e.message}`, 'error')),
+    (patch: Partial<GeoState>) => {
+      if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return Promise.resolve(); }
+      return saveMap(code, { geo: patch as GeoState }, remoteBase.current).catch((e: Error) => toast(`작전도 저장 실패: ${e.message}`, 'error'));
+    },
     [code, toast],
   );
 
   // ── 처음 위치: 저장된 위치 → 내 GPS → 재난발생현황 장소 → 서울시청 ──
   useEffect(() => {
-    if (geo) return;
+    if (geo || !canEdit) return;
     let cancelled = false;
     const start = async () => {
       const gps = await getGps().catch(() => null);
@@ -84,7 +91,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!geo]);
+  }, [!!geo, canEdit]);
 
   // ── 지도 만들기 (한 번) ──
   useEffect(() => {
@@ -169,7 +176,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       persist({ items: [...(latestItems.current ?? []), it] });
       setSelId(it.id);
       setMode({ kind: 'select' });
-      log('작전도', `${team ? teamTitle(team) : boardName ? `${boardName} 현황표` : MAP_TYPES[md.type]?.label} 배치`);
+
     };
     m.on('click', onClick);
     return () => {
@@ -211,7 +218,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       if (pts.length >= 2) {
         const line: GeoLine = { id: uid(), kind: mode.line, pts: pts.flatMap((p) => [p.lat, p.lng]), color: style.color! };
         persist({ lines: [...latestLines.current, line] });
-        log('작전도', `${mode.line === 'hose' ? '수관' : '진입경로'} 그리기`);
+
       }
       pts = [];
     };
@@ -377,21 +384,22 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   };
 
   const toggleLock = async () => {
+    if (!canEdit) return;
     const m = lmap.current;
     if (!m) return;
     if (geo.locked) {
       persist({ locked: false });
-      log('작전도', '지도 고정 풀기');
+
       return;
     }
     const c = m.getCenter();
     const zoom = m.getZoom();
     const address = (await reverseGeocode(c.lat, c.lng).catch(() => null)) ?? '';
     persist({ locked: true, lat: c.lat, lng: c.lng, zoom, address });
-    log('작전도', `지도 고정${address ? ` — ${address}` : ''}`);
+
     // 재난발생현황 장소가 비어 있으면 채워 준다
     if (address && !data.incident.location?.trim()) {
-      saveField(code, 'incident', { ...data.incident, location: address }).catch(() => {});
+      saveField(code, 'incident', { location: address }, { location: data.incident.location }).catch((e: Error) => toast(`주소 저장 실패: ${e.message}`, 'error'));
       log('보고서', `재난발생현황 장소: ${address} (지도에서 자동)`);
     }
   };
@@ -402,11 +410,10 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   const removeSelected = () => {
     if (sel) {
       persist({ items: geo.items.filter((x) => x.id !== sel.id) });
-      const team = sel.teamId ? data.teams.find((t) => t.id === sel.teamId) : undefined;
-      log('작전도', `${team ? teamTitle(team) : MAP_TYPES[sel.type]?.label ?? '표시물'} 삭제`);
+
     } else if (selLine) {
       persist({ lines: geo.lines.filter((x) => x.id !== selLine.id) });
-      log('작전도', `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
+
     }
     setSelId(null);
   };

@@ -3,7 +3,8 @@ import { escapeHtml } from './format';
 /** 엑셀에서 한글이 깨지지 않도록 BOM 을 붙인 CSV 를 내려받는다 */
 export function downloadCsv(filename: string, header: string[], rows: (string | number)[][]) {
   const cell = (v: string | number) => {
-    const s = String(v ?? '');
+    const raw = String(v ?? '');
+    const s = typeof v === 'string' && /^[\s]*[=+@-]/.test(raw) ? `'${raw}` : raw;
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const text = [header, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');

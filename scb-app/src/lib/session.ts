@@ -9,12 +9,15 @@ import {
   query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   Timestamp,
   updateDoc,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, deviceUid } from '../firebase';
+import { mergeEdits } from './merge';
+import { trackedSave } from './save-status';
+import { joinSession } from './access';
 import type {
   Building,
   BuildingState,
@@ -28,7 +31,7 @@ import type {
   Team,
   Unit,
 } from '../types';
-import { chatSender } from './identity';
+import { chatSender, loadIdentity } from './identity';
 
 export const TEAM_COLORS = ['#e53935', '#ff6d00', '#f9a825', '#43a047', '#1e88e5', '#3949ab', '#8e24aa'];
 
@@ -130,14 +133,17 @@ export function parseSession(raw: Record<string, unknown>): SessionData {
   const incident: Record<string, string> = {};
   for (const [k, v] of Object.entries(obj(raw.incident))) incident[k] = String(v ?? '');
   const dr = obj(raw.disasterResponse);
-  const strRow = (r: unknown) => {
+  const strRow = (r: unknown, index: number) => {
     const m = obj(r);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(m)) out[k] = String(v ?? '');
+    out.id ||= `legacy-${index}`;
     return out;
   };
 
   return {
+    ownerId: str(raw.ownerId),
+    closed: raw.closed === true,
     title: str(raw.title),
     buildings,
     states,
@@ -167,11 +173,16 @@ export function parseSession(raw: Record<string, unknown>): SessionData {
 
 // ── 세션 ─────────────────────────────────────────────────────────────
 export async function sessionExists(code: string) {
+  await joinSession(code, chatSender(loadIdentity() ?? { agency: '', dept: '', role: '' }));
   return (await getDoc(sessionRef(code))).exists();
 }
 
 export async function createSession(code: string, title: string, building: Building, state: BuildingState) {
-  await setDoc(sessionRef(code), {
+  const uid = await deviceUid();
+  const batch = writeBatch(db);
+  batch.set(sessionRef(code), {
+    ownerId: uid,
+    closed: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     title,
@@ -183,14 +194,20 @@ export async function createSession(code: string, title: string, building: Build
     timerSettings: { warnMin: 15, dangerMin: 20 },
     fireOrigin: null,
   });
+  batch.set(doc(db, 'sessions', code, 'members', uid), { role: 'owner', name: '현장 개설자', joinedAt: serverTimestamp() });
+  await batch.commit();
 }
 
-export function subscribeSession(code: string, cb: (d: SessionData | null) => void, onError: (e: Error) => void) {
-  return onSnapshot(
-    sessionRef(code),
-    (snap) => cb(snap.exists() ? parseSession(snap.data()) : null),
-    onError,
-  );
+export function subscribeSession(code: string, cb: (d: SessionData | null) => void, onError: (e: Error) => void, connection?: (connected: boolean) => void) {
+  let cancelled = false;
+  let stop = () => {};
+  joinSession(code, chatSender(loadIdentity() ?? { agency: '', dept: '', role: '' })).then(() => {
+    if (!cancelled) stop = onSnapshot(sessionRef(code), { includeMetadataChanges: true }, (snap) => {
+      connection?.(!snap.metadata.fromCache && !snap.metadata.hasPendingWrites);
+      if (!snap.metadata.hasPendingWrites) cb(snap.exists() ? parseSession(snap.data()) : null);
+    }, onError);
+  }).catch(onError);
+  return () => { cancelled = true; stop(); };
 }
 
 type Mutable = Pick<SessionData, 'title' | 'buildings' | 'states' | 'personnelStats' | 'teams' | 'timerSettings' | 'fireOrigin'>;
@@ -200,7 +217,8 @@ const MUTABLE_KEYS: (keyof Mutable)[] = ['title', 'buildings', 'states', 'person
  * 여러 사람이 동시에 고쳐도 서로 덮어쓰지 않도록 트랜잭션으로
  * "최신 문서를 읽고 → 바꾸고 → 바뀐 칸만 저장" 한다.
  */
-export async function mutateSession(code: string, fn: (d: SessionData) => void) {
+export async function mutateSession(code: string, fn: (d: SessionData) => void, audit?: { actor: Identity; category: LogCategory; text: string; at: number }) {
+  const actorUid = await deviceUid();
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(sessionRef(code));
     if (!snap.exists()) throw new Error('세션이 없습니다');
@@ -214,21 +232,41 @@ export async function mutateSession(code: string, fn: (d: SessionData) => void) 
     if (Object.keys(patch).length === 0) return;
     patch.updatedAt = serverTimestamp();
     tx.update(sessionRef(code), patch as Record<string, never>);
+    if (audit) tx.set(doc(collection(db, 'sessions', code, 'logs')), {
+      at: serverTimestamp(), atMs: audit.at, actor: audit.actor, actorUid,
+      category: audit.category, text: audit.text.slice(0, 500),
+    });
   });
 }
 
 /** 보고서류(incident / disasterResponse / casualty)는 칸 하나를 통째로 저장 */
-export async function saveField(code: string, key: 'incident' | 'disasterResponse' | 'casualty', value: unknown) {
-  await updateDoc(sessionRef(code), { [key]: value, updatedAt: serverTimestamp() });
+export async function saveField<T>(code: string, key: 'incident' | 'disasterResponse' | 'casualty', value: T, base: T): Promise<T> {
+  const actorUid = await deviceUid();
+  const actor = loadIdentity() ?? { agency: '', dept: '', role: '' };
+  return runTransaction(db, async (tx) => {
+    const ref = sessionRef(code);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('세션이 없습니다');
+    const merged = mergeEdits(base, value, parseSession(snap.data())[key] as T);
+    tx.update(ref, { [key]: merged, updatedAt: serverTimestamp() });
+    if (JSON.stringify(merged) !== JSON.stringify(parseSession(snap.data())[key])) tx.set(doc(collection(db, 'sessions', code, 'logs')), {
+      at: serverTimestamp(), atMs: Date.now(), actor, actorUid,
+      category: key === 'casualty' ? '인명피해' : '보고서',
+      text: key === 'casualty' ? '환자 목록 변경 저장' : key === 'incident' ? '재난발생현황 변경 저장' : '대응활동 보고서 변경 저장',
+    });
+    return merged;
+  });
 }
 
 // ── 활동 로그 ────────────────────────────────────────────────────────
 /** at: 실제로 누른 시각 (저장이 늦어져도 기록 순서가 뒤바뀌지 않게) */
 export async function addLog(code: string, actor: Identity, category: LogCategory, text: string, at = Date.now()) {
+  const actorUid = await deviceUid();
   await addDoc(collection(db, 'sessions', code, 'logs'), {
     at: serverTimestamp(),
     atMs: at,
     actor,
+    actorUid,
     category,
     text: text.slice(0, 500),
   });
@@ -272,8 +310,10 @@ export function subscribeChat(code: string, cb: (items: ChatMessage[]) => void, 
 }
 
 export async function sendChat(code: string, me: Identity, text: string) {
+  const actorUid = await deviceUid();
   await addDoc(collection(db, 'sessions', code, 'chat'), {
     sender: chatSender(me),
+    actorUid,
     text: text.slice(0, 500),
     timestamp: serverTimestamp(),
   });
@@ -285,7 +325,9 @@ export const EMPTY_MAP: MapDoc = { mode: 'map', geo: null, bg: null, bgW: 1600, 
 export function subscribeMap(code: string, cb: (m: MapDoc) => void, onError: (e: Error) => void) {
   return onSnapshot(
     doc(db, 'sessions', code, 'secondary', 'map'),
+    { includeMetadataChanges: true },
     (snap) => {
+      if (snap.metadata.hasPendingWrites) return;
       if (!snap.exists()) return cb(EMPTY_MAP);
       const m = snap.data();
       const g = m.geo ? obj(m.geo) : null;
@@ -314,10 +356,27 @@ export function subscribeMap(code: string, cb: (m: MapDoc) => void, onError: (e:
   );
 }
 
-export async function saveMap(code: string, patch: Partial<MapDoc>) {
+export async function saveMap(code: string, patch: Partial<MapDoc>, base: MapDoc) {
+  const actorUid = await deviceUid();
+  const actor = loadIdentity() ?? { agency: '', dept: '', role: '' };
   // Firestore 는 undefined 값을 못 받으므로 JSON 왕복으로 지운다
   const clean = JSON.parse(JSON.stringify(patch)) as Partial<MapDoc>;
-  await setDoc(doc(db, 'sessions', code, 'secondary', 'map'), { ...clean, updatedAt: serverTimestamp() }, { merge: true });
+  return trackedSave(() => runTransaction(db, async (tx) => {
+    const ref = doc(db, 'sessions', code, 'secondary', 'map');
+    const snap = await tx.get(ref);
+    const current = { ...EMPTY_MAP, ...snap.data() } as MapDoc;
+    const merged = { ...current };
+    for (const key of Object.keys(clean) as (keyof MapDoc)[]) {
+      const local = key === 'geo' && clean.geo ? { ...base.geo, ...clean.geo } : clean[key];
+      (merged as unknown as Record<string, unknown>)[key] = mergeEdits(base[key], local, current[key]);
+    }
+    tx.set(ref, { ...merged, updatedAt: serverTimestamp() });
+    tx.set(doc(collection(db, 'sessions', code, 'logs')), {
+      at: serverTimestamp(), atMs: Date.now(), actor, actorUid,
+      category: '작전도', text: '작전도 변경 저장',
+    });
+    return merged;
+  }));
 }
 
 // ── 브리핑 게시판 (sessions/{code}/briefings) ────────────────────────

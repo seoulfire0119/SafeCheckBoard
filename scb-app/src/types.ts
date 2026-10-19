@@ -66,6 +66,8 @@ export interface FireOrigin {
 }
 
 export interface SessionData {
+  ownerId: string;
+  closed: boolean;
   title: string;
   buildings: Building[];
   states: BuildingState[];
@@ -79,12 +81,14 @@ export interface SessionData {
 }
 
 export interface ActionRow {
+  id?: string;
   time: string;
   content: string;
   highlight?: string;
 }
 
 export interface AgencyRow {
+  id?: string;
   agency: string;
   person: string;
   arrive: string;
@@ -92,6 +96,7 @@ export interface AgencyRow {
 }
 
 export interface CasualtyRow {
+  id?: string;
   status: string; // 지연환자/긴급환자/응급환자/비응급환자
   name: string;
   gender: string;

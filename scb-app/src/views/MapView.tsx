@@ -24,7 +24,7 @@ type Drag =
 const sizeOf = (it: MapItem) => ({ w: it.w ?? MAP_TYPES[it.type]?.w ?? 80, h: it.h ?? MAP_TYPES[it.type]?.h ?? 42 });
 
 export function MapView() {
-  const { code, data, log, toast } = useSession();
+  const { code, data, toast, canEdit } = useSession();
   const now = useNow();
   const [map, setMap] = useState<MapDoc>(EMPTY_MAP);
   const [loaded, setLoaded] = useState(false);
@@ -39,6 +39,9 @@ export function MapView() {
   const drag = useRef<Drag>(null);
   const [draft, setDraft] = useState<MapLine | null>(null);
   const mapRef = useRef(map);
+  const remoteBase = useRef(map);
+  const editable = useRef(canEdit);
+  editable.current = canEdit;
   mapRef.current = map;
   const svgRef = useRef<SVGSVGElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -48,6 +51,7 @@ export function MapView() {
       subscribeMap(
         code,
         (m) => {
+          remoteBase.current = m;
           setLoaded(true);
           // 끄는 중에는 내 화면 위치를 유지 (놓으면 저장되고 다시 맞춰진다)
           if (!drag.current) setMap(m);
@@ -70,7 +74,13 @@ export function MapView() {
   const zoomBy = (f: number) => setCam((c) => clampCam({ ...c, z: c.z * f }));
 
   const persist = useCallback(
-    (patch: Partial<MapDoc>) => saveMap(code, patch).catch((e: Error) => toast(`작전도 저장 실패: ${e.message}`, 'error')),
+    (patch: Partial<MapDoc>) => {
+      if (!editable.current) { setMap(remoteBase.current); toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return Promise.resolve(); }
+      return saveMap(code, patch, remoteBase.current).catch((e: Error) => {
+      setMap(remoteBase.current);
+      toast(`작전도 저장 실패: ${e.message}`, 'error');
+      });
+    },
     [code, toast],
   );
 
@@ -88,13 +98,12 @@ export function MapView() {
     return { x: Math.max(0, Math.min(W, p.x)), y: Math.max(0, Math.min(H, p.y)) };
   };
 
-  const typeLabel = (it: MapItem) => it.label || MAP_TYPES[it.type]?.label || it.type;
 
   // ── 포인터 ──
   const onDown = (e: RPointerEvent<SVGSVGElement>) => {
+    if (!canEdit && mode.kind !== 'select') return;
     const p = toSvg(e);
     if (mode.kind === 'place') {
-      const t = MAP_TYPES[mode.type];
       const team = mode.teamId ? data.teams.find((x) => x.id === mode.teamId) : undefined;
       const it: MapItem = {
         id: uid(),
@@ -107,7 +116,7 @@ export function MapView() {
       setItems([...map.items, it]);
       setSelId(it.id);
       setMode({ kind: 'select' });
-      log('작전도', `${team ? teamTitle(team) : t.label} 배치`);
+
       return;
     }
     if (mode.kind === 'draw') {
@@ -183,7 +192,7 @@ export function MapView() {
         const lines = [...map.lines, d.line];
         setMap((m) => ({ ...m, lines }));
         persist({ lines });
-        log('작전도', `${d.line.kind === 'hose' ? '수관' : d.line.kind === 'route' ? '진입경로' : '선'} 그리기`);
+
       }
     } else if (d.kind === 'resize' || d.moved) {
       persist({ items: mapRef.current.items });
@@ -196,13 +205,12 @@ export function MapView() {
   const removeSelected = () => {
     if (sel) {
       setItems(map.items.filter((x) => x.id !== sel.id));
-      const team = sel.teamId ? data.teams.find((t) => t.id === sel.teamId) : undefined;
-      log('작전도', `${team ? teamTitle(team) : typeLabel(sel)} 삭제`);
+
     } else if (selLine) {
       const lines = map.lines.filter((x) => x.id !== selLine.id);
       setMap((m) => ({ ...m, lines }));
       persist({ lines });
-      log('작전도', `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
+
     }
     setSelId(null);
   };
@@ -210,6 +218,7 @@ export function MapView() {
   const patchSel = (patch: Partial<MapItem>) => sel && setItems(map.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)));
 
   const uploadBg = async (f: File) => {
+    if (!canEdit) return;
     setBusy(true);
     try {
       const { url, w, h } = await compressImage(f);
@@ -219,9 +228,10 @@ export function MapView() {
       const items = map.items.map((it) => ({ ...it, y: Math.round(it.y * ratio) }));
       const lines = map.lines.map((l) => ({ ...l, points: l.points.map((v, i) => (i % 2 ? Math.round(v * ratio) : v)) }));
       setMap({ ...map, bg: url, bgW: w, bgH: h, items, lines });
-      await saveMap(code, { bg: url, bgW: w, bgH: h, items, lines });
-      log('작전도', `배경 이미지 등록 (${f.name})`);
+      await saveMap(code, { bg: url, bgW: w, bgH: h, items, lines }, map);
+
     } catch (e) {
+      setMap(remoteBase.current);
       toast(`배경 등록 실패: ${(e as Error).message}`, 'error');
     } finally {
       setBusy(false);
@@ -231,7 +241,7 @@ export function MapView() {
   const runAuto = () => {
     const { items, summary } = autoLayout(map.items, data, H);
     setItems(items);
-    log('작전도', `자동 배치 — ${summary}`);
+
     toast(`자동 배치: ${summary}`);
   };
 
@@ -329,7 +339,7 @@ export function MapView() {
               onClick={() => {
                 setMap({ ...map, bg: null });
                 persist({ bg: null });
-                log('작전도', '배경 이미지 삭제');
+
               }}
             >
               배경 지우기
