@@ -294,7 +294,7 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
       <span className="unum">
-        {u.vulnerable && <WheelchairIcon size={30} className="uv" aria-label="피난약자" />}
+        {u.vulnerable && <WheelchairIcon size={26} className="uv" aria-label="피난약자" />}
         <span className="unum-txt">{u.label || unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       </span>
       {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
