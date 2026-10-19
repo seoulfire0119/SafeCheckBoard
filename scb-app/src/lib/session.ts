@@ -21,6 +21,7 @@ import type {
   ChatMessage,
   Identity,
   LogCategory,
+  GeoState,
   LogItem,
   MapDoc,
   SessionData,
@@ -278,7 +279,7 @@ export async function sendChat(code: string, me: Identity, text: string) {
 }
 
 // ── 진압작전도 (sessions/{code}/secondary/map) ───────────────────────
-export const EMPTY_MAP: MapDoc = { bg: null, bgW: 1600, bgH: 1000, items: [], lines: [] };
+export const EMPTY_MAP: MapDoc = { mode: 'map', geo: null, bg: null, bgW: 1600, bgH: 1000, items: [], lines: [] };
 
 export function subscribeMap(code: string, cb: (m: MapDoc) => void, onError: (e: Error) => void) {
   return onSnapshot(
@@ -286,7 +287,21 @@ export function subscribeMap(code: string, cb: (m: MapDoc) => void, onError: (e:
     (snap) => {
       if (!snap.exists()) return cb(EMPTY_MAP);
       const m = snap.data();
+      const g = m.geo ? obj(m.geo) : null;
       cb({
+        mode: m.mode === 'plan' ? 'plan' : 'map',
+        geo: g
+          ? {
+              lat: num(g.lat, 37.5665),
+              lng: num(g.lng, 126.978),
+              zoom: num(g.zoom, 18),
+              layer: g.layer === 'Base' ? 'Base' : 'Satellite',
+              locked: g.locked === true,
+              address: str(g.address),
+              items: arr(g.items) as GeoState['items'],
+              lines: arr(g.lines) as GeoState['lines'],
+            }
+          : null,
         bg: typeof m.bg === 'string' ? m.bg : null,
         bgW: num(m.bgW, 1600),
         bgH: num(m.bgH, 1000),

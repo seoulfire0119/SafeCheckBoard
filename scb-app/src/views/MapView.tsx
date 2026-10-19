@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
-import { Building2, Flame, Grid3x3, Hand, HardHat, ImageUp, Maximize, MapPin, Minus, PanelLeft, Plus, Printer, Route, Sparkles, Trash2, Waves, Wrench } from 'lucide-react';
+import { Building2, FileImage, Flame, Grid3x3, Map as MapIcon, Hand, HardHat, ImageUp, Maximize, MapPin, Minus, PanelLeft, Plus, Printer, Route, Sparkles, Trash2, Waves, Wrench } from 'lucide-react';
 import type { MapDoc, MapItem, MapLine, SessionData, Team } from '../types';
 import { MAP_ICON } from '../components/icons';
+import { GeoMap } from './GeoMap';
 import { useNow, useSession } from '../session-context';
 import { EMPTY_MAP, saveMap, subscribeMap } from '../lib/session';
 import { compressImage, MAP_CATS, MAP_COLORS, MAP_TYPES } from '../lib/mapTypes';
@@ -249,9 +250,37 @@ export function MapView() {
 
   const placedTeam = new Set(map.items.filter((i) => i.teamId).map((i) => i.teamId!));
 
+  const modeSwitch = (
+    <div className="seg mode-switch">
+      <button
+        className={map.mode === 'map' ? 'on' : ''}
+        onClick={() => {
+          if (map.mode === 'map') return;
+          setMap({ ...map, mode: 'map' });
+          persist({ mode: 'map' });
+        }}
+      >
+        <MapIcon size={15} /> 지도
+      </button>
+      <button
+        className={map.mode === 'plan' ? 'on' : ''}
+        onClick={() => {
+          if (map.mode === 'plan') return;
+          setMap({ ...map, mode: 'plan' });
+          persist({ mode: 'plan' });
+        }}
+      >
+        <FileImage size={15} /> 도면
+      </button>
+    </div>
+  );
+
+  if (loaded && map.mode === 'map') return <GeoMap map={map} modeSwitch={modeSwitch} />;
+
   return (
     <div className="map-view">
       <div className="map-toolbar">
+        {modeSwitch}
         <button className={`btn small ${palette ? 'on' : ''}`} onClick={() => setPalette(!palette)}>
           <PanelLeft size={16} /> 표시물
         </button>
@@ -276,7 +305,7 @@ export function MapView() {
           <Sparkles size={16} /> 자동 배치
         </button>
         <button className="btn small" disabled={busy} onClick={() => fileRef.current?.click()}>
-          <ImageUp size={16} /> {busy ? '올리는 중…' : map.bg ? '배경 바꾸기' : '도면·지도 올리기'}
+          <ImageUp size={16} /> {busy ? '올리는 중…' : map.bg ? '도면 바꾸기' : '도면 사진 올리기'}
         </button>
         <input
           ref={fileRef}
@@ -614,7 +643,17 @@ function Label({ x, y, text, color, big }: { x: number; y: number; text: string;
   );
 }
 
-function Inspector({ it, data, now, onPatch }: { it: MapItem; data: SessionData; now: number; onPatch: (p: Partial<MapItem>) => void }) {
+export function Inspector({
+  it,
+  data,
+  now,
+  onPatch,
+}: {
+  it: Pick<MapItem, 'id' | 'type' | 'label' | 'color' | 'teamId'>;
+  data: SessionData;
+  now: number;
+  onPatch: (p: { label?: string; color?: string }) => void;
+}) {
   const t = MAP_TYPES[it.type];
   const [label, setLabel] = useState(it.label ?? '');
   useEffect(() => setLabel(it.label ?? ''), [it.id, it.label]);
@@ -765,7 +804,7 @@ function teamLegendHtml(d: SessionData, now: number) {
   return rows ? `<h2>진입대 현황</h2><table><thead><tr><th>대</th><th>위치</th><th>임무</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table>` : '';
 }
 
-function MapTypeIcon({ type, ...rest }: { type: string } & import('lucide-react').LucideProps) {
+export function MapTypeIcon({ type, ...rest }: { type: string } & import('lucide-react').LucideProps) {
   const I = MAP_ICON[type] ?? Flame;
   return <I {...rest} />;
 }

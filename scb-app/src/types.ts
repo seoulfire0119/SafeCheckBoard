@@ -157,7 +157,38 @@ export interface MapLine {
   color: string;
 }
 
+// 지도(브이월드) 위 표시물 — 위치를 위도·경도로 저장해 어느 기기에서 봐도 같은 자리
+export interface GeoItem {
+  id: string;
+  type: string;
+  lat: number;
+  lng: number;
+  label?: string;
+  color?: string;
+  teamId?: string;
+}
+
+export interface GeoLine {
+  id: string;
+  kind: 'route' | 'hose' | 'line';
+  pts: number[]; // lat1,lng1,lat2,lng2,…
+  color: string;
+}
+
+export interface GeoState {
+  lat: number;
+  lng: number;
+  zoom: number;
+  layer: 'Satellite' | 'Base';
+  locked: boolean; // 고정: 모든 기기에서 같은 위치·확대로 멈춤
+  address: string;
+  items: GeoItem[];
+  lines: GeoLine[];
+}
+
 export interface MapDoc {
+  mode: 'map' | 'plan'; // 지도(브이월드) / 도면(사진 올리기)
+  geo: GeoState | null;
   bg: string | null; // 배경 이미지 dataURL (도면·지도 캡처)
   bgW: number;
   bgH: number;
