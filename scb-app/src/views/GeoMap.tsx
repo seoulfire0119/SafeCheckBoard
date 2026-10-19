@@ -43,7 +43,9 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   const lineLayer = useRef<L.LayerGroup | null>(null);
   const meMarker = useRef<L.CircleMarker | null>(null);
   const markers = useRef(new Map<string, L.Marker>());
-  const dragging = useRef(false);
+  const dragging = useRef<string | null>(null); // 지금 끌고 있는 표시물 id
+  const pending = useRef(new Map<string, { lat: number; lng: number; until: number }>());
+  const iconHtml = useRef(new Map<string, string>());
   const [mode, setMode] = useState<Mode>({ kind: 'select' });
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -113,6 +115,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       m.remove();
       lmap.current = null;
       markers.current.clear();
+      iconHtml.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!geo]);
@@ -227,6 +230,10 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   }, [mode, persist, log]);
 
   // ── 표시물 그리기 (데이터가 바뀔 때마다 맞춘다) ──
+  // 끄는 도중에 모양을 새로 그리면 손가락에서 놓쳐 버리므로:
+  //  · 끌고 있는 표시물은 건드리지 않는다
+  //  · 모양(html)이 실제로 바뀐 것만 다시 그린다
+  //  · 놓은 직후 서버 저장이 돌아오기 전까지는 놓은 자리를 유지한다
   useEffect(() => {
     const ml = markerLayer.current;
     if (!ml || !geo) return;
@@ -238,35 +245,51 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       }
       seen.add(it.id);
       const icon = makeIcon(it, data, now, selId === it.id);
+      const html = String(icon.options.html);
       let mk = markers.current.get(it.id);
       if (!mk) {
         mk = L.marker([it.lat, it.lng], { icon, draggable: true, autoPan: true, keyboard: false, riseOnHover: true });
+        const self = mk;
         mk.on('click', (e) => {
           L.DomEvent.stopPropagation(e);
           if (modeRef.current.kind === 'select') setSelId(it.id);
         });
         mk.on('dragstart', () => {
-          dragging.current = true;
-          setSelId(it.id);
+          dragging.current = it.id;
         });
         mk.on('dragend', () => {
-          dragging.current = false;
-          const p = mk!.getLatLng();
+          dragging.current = null;
+          const p = self.getLatLng();
+          pending.current.set(it.id, { lat: p.lat, lng: p.lng, until: Date.now() + 5000 });
           const items = (latestItems.current ?? []).map((x) => (x.id === it.id ? { ...x, lat: p.lat, lng: p.lng } : x));
           persist({ items });
+          setSelId(it.id);
         });
         mk.addTo(ml);
         markers.current.set(it.id, mk);
-      } else {
-        if (!dragging.current) mk.setLatLng([it.lat, it.lng]);
-        mk.setIcon(icon);
+        iconHtml.current.set(it.id, html);
+      } else if (dragging.current !== it.id) {
+        const pd = pending.current.get(it.id);
+        const arrived = pd && Math.abs(pd.lat - it.lat) < 1e-9 && Math.abs(pd.lng - it.lng) < 1e-9;
+        if (pd && !arrived && Date.now() < pd.until) {
+          // 서버에 저장 중 — 놓은 자리 유지
+        } else {
+          pending.current.delete(it.id);
+          const cur = mk.getLatLng();
+          if (cur.lat !== it.lat || cur.lng !== it.lng) mk.setLatLng([it.lat, it.lng]);
+        }
+        if (iconHtml.current.get(it.id) !== html) {
+          mk.setIcon(icon);
+          iconHtml.current.set(it.id, html);
+        }
       }
       mk.setZIndexOffset(it.type === 'team' ? 900 : it.type === 'fire' ? 800 : it.type === 'building' ? -500 : 0);
     }
     for (const [id, mk] of markers.current) {
-      if (!seen.has(id)) {
+      if (!seen.has(id) && dragging.current !== id) {
         mk.remove();
         markers.current.delete(id);
+        iconHtml.current.delete(id);
       }
     }
   }, [geo, data, now, selId, persist]);
