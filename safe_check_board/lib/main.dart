@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
-import 'screens/building_setup_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'screens/session_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const SafeCheckBoardApp());
 }
 
@@ -15,12 +21,12 @@ class SafeCheckBoardApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
+          seedColor: Colors.deepOrange,
           brightness: Brightness.light,
         ),
         useMaterial3: true,
       ),
-      home: const BuildingSetupScreen(),
+      home: const SessionScreen(),
     );
   }
 }
