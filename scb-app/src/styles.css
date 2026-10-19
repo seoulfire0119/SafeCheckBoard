@@ -976,12 +976,6 @@ a.ai-ladder-bar .ai-ladder-cta {
   min-height: 100%;
   align-content: stretch;
 }
-/* 범위 선택 모드: 손가락으로 끌면 화면이 움직이지 않고 칸이 선택된다 */
-.bgrid.range {
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
 .flabel,
 .allbtn {
   border: 1px solid transparent;
@@ -1363,6 +1357,37 @@ a.ai-ladder-bar .ai-ladder-cta {
   font-size: 14px;
   white-space: normal;
   min-height: 46px;
+}
+.more {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 0 12px;
+  margin-top: 4px;
+}
+.more summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+}
+.more summary::-webkit-details-marker {
+  display: none;
+}
+.more summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--ink-3);
+}
+.more[open] summary::after {
+  content: '▾';
+}
+.more[open] {
+  padding-bottom: 12px;
 }
 .range-box {
   border: 1px solid #bfdbfe;

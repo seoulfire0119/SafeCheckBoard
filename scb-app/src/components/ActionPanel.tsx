@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Accessibility, ArrowDownToLine, ArrowUpToLine, BoxSelect, Columns2, EyeOff, Flame, Layers, MousePointerClick, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
+import { Accessibility, ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Settings2, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
 import type { Building, BuildingState, Unit, UnitStatus } from '../types';
 import { STATUS_ICON } from './icons';
 import { useSession } from '../session-context';
@@ -31,9 +31,7 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
           <MousePointerClick size={28} />
           <b>호실을 선택하세요</b>
           <p className="hint">보드에서 호실을 누르거나, 층 이름(또는 ALL)을 눌러 층 전체를 고릅니다.</p>
-          <p className="hint">
-            여러 층을 한 번에 바꾸려면 건물 위쪽 <BoxSelect size={13} /> <b>범위 선택</b>을 켜고 손가락으로 쭉 끌어 주세요.
-          </p>
+          <p className="hint">여러 층을 한 번에 바꾸려면 층 이름(ALL)을 누르고 「아래 전부 / 위 전부」를 고르세요.</p>
         </div>
         <h3>최근 기록</h3>
         <ul className="mini-log">
@@ -320,23 +318,41 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
           </button>
         )}
       </div>
-      <div className="toggle-row">
+      {isFloorOrigin && (
         <button
-          className={`btn ${isFloorOrigin ? 'fire on' : 'fire'}`}
-          onClick={() =>
-            act(
-              (d) => {
-                d.fireOrigin = isFloorOrigin ? null : { buildingIdx: bi, unitId: null, floor: f, note: '', by: `${me.dept} ${me.role}`, at: Date.now() };
-              },
-              '화점',
-              isFloorOrigin ? `화점(추정) 해제: ${b.name} ${fl}` : `화점(추정) 지정: ${b.name} ${fl} (호실 미상)`,
-            )
-          }
+          className="btn fire on"
+          onClick={() => act((d) => void (d.fireOrigin = null), '화점', `화점(추정) 해제: ${b.name} ${fl}`)}
         >
-          <Flame size={18} /> {isFloorOrigin ? '화점 해제' : '이 층을 화점(추정)으로'}
+          <Flame size={18} /> 이 층 화점 표시 해제
         </button>
+      )}
+      <details className="more">
+        <summary>
+          <Settings2 size={16} /> 층 설정 (이름 바꾸기 · 숨기기)
+        </summary>
+        <h4>층 이름</h4>
+        <div className="row-btns">
+          <input value={floorName} placeholder={fl} onChange={(e) => setFloorName(e.target.value)} />
+          <button
+            className="btn small"
+            onClick={() =>
+              act(
+                (d) => {
+                  const k = String(f);
+                  if (floorName.trim()) d.states[bi].floorLabels[k] = floorName.trim();
+                  else delete d.states[bi].floorLabels[k];
+                },
+                '건물',
+                `${b.name} ${fl} 이름 변경 → ${floorName.trim() || '(기본)'}`,
+              )
+            }
+          >
+            저장
+          </button>
+        </div>
+        <p className="hint">층 숨기기: 상관없는 층을 접어서 보드를 짧게 만듭니다. 접힌 줄을 누르면 다시 보입니다.</p>
         <button
-          className="btn"
+          className="btn small"
           onClick={() => {
             onClear();
             act(
@@ -348,29 +364,9 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
             );
           }}
         >
-          <EyeOff size={18} /> 이 층 숨기기
+          <EyeOff size={16} /> 이 층 숨기기
         </button>
-      </div>
-      <h4>층 이름</h4>
-      <div className="row-btns">
-        <input value={floorName} placeholder={fl} onChange={(e) => setFloorName(e.target.value)} />
-        <button
-          className="btn small"
-          onClick={() =>
-            act(
-              (d) => {
-                const k = String(f);
-                if (floorName.trim()) d.states[bi].floorLabels[k] = floorName.trim();
-                else delete d.states[bi].floorLabels[k];
-              },
-              '건물',
-              `${b.name} ${fl} 이름 변경 → ${floorName.trim() || '(기본)'}`,
-            )
-          }
-        >
-          저장
-        </button>
-      </div>
+      </details>
     </div>
   );
 }
@@ -437,9 +433,6 @@ function MultiPanel({ bi, b, st, units, onClear }: { bi: number; b: Building; st
           </button>
         ))}
       </div>
-      <p className="hint">
-        <BoxSelect size={13} /> 범위 선택이 켜져 있으면 칸이나 층 이름을 눌러 더하거나 뺄 수 있습니다.
-      </p>
     </div>
   );
 }
