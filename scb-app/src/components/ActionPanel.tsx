@@ -1,7 +1,8 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Accessibility, ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Pencil, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Pencil, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
 import type { Building, BuildingState, Unit, UnitStatus } from '../types';
 import { STATUS_ICON } from './icons';
+import { WheelchairIcon } from './WheelchairIcon';
 import { useSession } from '../session-context';
 import { baseFloorLabel, baseUnitLabel, floorLabel, floorsDescending, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
 import { hhmm } from '../lib/format';
@@ -160,7 +161,7 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
               )
             }
           >
-            <Accessibility size={18} /> 피난약자 {unit.vulnerable ? '해제' : '표시'}
+            <WheelchairIcon size={20} /> 피난약자 {unit.vulnerable ? '해제' : '표시'}
           </button>
         </div>
         {isOrigin && fo && (

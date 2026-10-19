@@ -1,11 +1,12 @@
 import { useState, type CSSProperties } from 'react';
-import { Accessibility, Building2, CarFront, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
+import { Building2, CarFront, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending, isParking, rooftopFloor, STATUS, unitLabel } from '../lib/building';
 import { LEVEL, teamElapsed, teamLevel, teamMain, teamsByFloor, teamSub } from '../lib/teams';
 import { mmss } from '../lib/format';
 import { Modal } from './Modal';
+import { WheelchairIcon } from './WheelchairIcon';
 
 export interface Selection {
   b: number;
@@ -293,7 +294,7 @@ function UnitCell(props: { b: Building; u: Unit; span: number; selected: boolean
       title={`${unitLabel(props.b, u)} · ${st.label}${u.memo ? ` · ${u.memo}` : ''}`}
     >
       <span className="unum">
-        {u.vulnerable && <Accessibility size={30} strokeWidth={2.6} className="uv" aria-label="피난약자" />}
+        {u.vulnerable && <WheelchairIcon size={30} className="uv" aria-label="피난약자" />}
         <span className="unum-txt">{u.label || unitLabel(props.b, u).replace(/^.*구역 /, '')}</span>
       </span>
       {u.memoPinned && u.memo ? <span className="umemo">{u.memo}</span> : u.status !== 'unknown' && <span className="ust">{st.label}</span>}
