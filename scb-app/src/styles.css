@@ -2563,3 +2563,127 @@ a.ai-ladder-bar .ai-ladder-cta {
   overflow: hidden;
   overflow: clip;
 }
+
+/* 지도 위 건물 현황표 */
+.mk-board {
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  font-family: 'Pretendard Variable', Pretendard, sans-serif;
+  border: 1.5px solid #fff;
+}
+.mk-board.sel {
+  outline: 3px dashed #2563eb;
+  outline-offset: 3px;
+}
+.mb-head {
+  background: #334155;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  height: 22px;
+}
+.mb-head b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mb-rows {
+  padding: 4px 4px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.mb-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 3px;
+}
+.mb-row.fire {
+  background: rgba(239, 68, 68, 0.22);
+}
+.mb-fl {
+  width: 28px;
+  text-align: right;
+  font-weight: 700;
+  color: #44403c;
+  line-height: 1;
+  flex: none;
+}
+.mb-cells {
+  display: grid;
+  gap: 1px;
+  height: 100%;
+}
+.mb-cells i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+.mb-cells i.origin {
+  outline: 2px solid #fde047;
+  outline-offset: -1px;
+  animation: pulse 1s infinite;
+}
+.mb-teams {
+  display: flex;
+  gap: 2px;
+  width: 24px;
+}
+.mb-teams em {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.mb-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  padding: 2px 7px 4px;
+  font-size: 10px;
+  color: #57534e;
+  height: 18px;
+  overflow: hidden;
+}
+.mb-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.mb-foot i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+/* 지도 확대·축소에 맞춰 표시물 크기 조절 (가운데 기준) */
+.geo-mk > * {
+  scale: var(--mk-scale, 1);
+  transition: scale 0.15s;
+}
+.geo-map.mk-small .mk-label,
+.geo-map.mk-small .mk-team small,
+.geo-map.mk-small .mb-foot {
+  display: none;
+}
+
+.pal-grid.one {
+  grid-template-columns: 1fr;
+}
+.pal-grid.one .pal {
+  justify-content: flex-start;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pal-grid.one .pal small {
+  margin-left: auto;
+}

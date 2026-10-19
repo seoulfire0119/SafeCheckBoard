@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Crosshair, Flame, HardHat, Hand, Layers, Lock, LockOpen, Printer, Route, Search, Sparkles, Trash2, Waves, X } from 'lucide-react';
+import { Building2, Crosshair, Flame, HardHat, Hand, Layers, Lock, LockOpen, Printer, Route, Search, Sparkles, Trash2, Waves, X } from 'lucide-react';
 import type { GeoItem, GeoLine, GeoState, MapDoc, SessionData } from '../types';
 import { useNow, useSession } from '../session-context';
 import { saveField, saveMap } from '../lib/session';
 import { MAP_CATS, MAP_TYPES } from '../lib/mapTypes';
-import { floorLabel, unitLabel } from '../lib/building';
+import { floorKey, floorLabel, floorsDescending, STATUS, unitLabel } from '../lib/building';
 import { teamElapsed, teamLevel, teamPlace, teamTitle } from '../lib/teams';
 import { mmss, uid } from '../lib/format';
 import { geocode, offsetMeters, reverseGeocode, searchPlace, tileUrl, VWORLD_ATTR, type Place } from '../lib/vworld';
@@ -99,6 +99,16 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     lineLayer.current = L.layerGroup().addTo(m);
     markerLayer.current = L.layerGroup().addTo(m);
     lmap.current = m;
+    // 축소하면 표시물도 같이 작아지게 (18단계 확대가 원래 크기)
+    const applyScale = () => {
+      const z = m.getZoom();
+      const k = Math.max(0.3, Math.min(1.4, Math.pow(2, z - 18)));
+      const el = m.getContainer();
+      el.style.setProperty('--mk-scale', String(k));
+      el.classList.toggle('mk-small', k < 0.6);
+    };
+    applyScale();
+    m.on('zoom zoomend', applyScale);
     return () => {
       m.remove();
       lmap.current = null;
@@ -142,19 +152,21 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     const onClick = (e: L.LeafletMouseEvent) => {
       const md = modeRef.current;
       if (md.kind !== 'place') return setSelId(null);
-      const team = md.teamId ? data.teams.find((t) => t.id === md.teamId) : undefined;
+      const boardName = md.teamId?.startsWith('b:') ? md.teamId.slice(2) : null;
+      const team = md.teamId && !boardName ? data.teams.find((t) => t.id === md.teamId) : undefined;
       const it: GeoItem = {
         id: uid(),
         type: md.type,
         lat: e.latlng.lat,
         lng: e.latlng.lng,
-        ...(md.teamId ? { teamId: md.teamId, color: team?.color } : {}),
+        ...(boardName ? { label: boardName } : {}),
+        ...(team ? { teamId: team.id, color: team.color } : {}),
         ...(md.type === 'text' ? { label: '메모' } : {}),
       };
       persist({ items: [...(latestItems.current ?? []), it] });
       setSelId(it.id);
       setMode({ kind: 'select' });
-      log('작전도', `${team ? teamTitle(team) : MAP_TYPES[md.type]?.label} 배치`);
+      log('작전도', `${team ? teamTitle(team) : boardName ? `${boardName} 현황표` : MAP_TYPES[md.type]?.label} 배치`);
     };
     m.on('click', onClick);
     return () => {
@@ -245,7 +257,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
         if (!dragging.current) mk.setLatLng([it.lat, it.lng]);
         mk.setIcon(icon);
       }
-      mk.setZIndexOffset(it.type === 'team' ? 900 : it.type === 'fire' ? 800 : 0);
+      mk.setZIndexOffset(it.type === 'team' ? 900 : it.type === 'fire' ? 800 : it.type === 'building' ? -500 : 0);
     }
     for (const [id, mk] of markers.current) {
       if (!seen.has(id)) {
@@ -450,6 +462,24 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       <div className="map-body">
         {palette && (
           <aside className="palette">
+            <h4>건물 현황표</h4>
+            <div className="pal-grid one">
+              {data.buildings.map((bd) => {
+                const placed = geo.items.some((x) => x.type === 'building' && x.label === bd.name);
+                return (
+                  <button
+                    key={bd.name}
+                    className={`pal team ${mode.kind === 'place' && mode.type === 'building' && mode.teamId === `b:${bd.name}` ? 'on' : ''}`}
+                    disabled={placed}
+                    onClick={() => setMode({ kind: 'place', type: 'building', teamId: `b:${bd.name}` })}
+                  >
+                    <Building2 size={16} className="ic-brand" />
+                    {bd.name}
+                    {placed && <small>배치됨</small>}
+                  </button>
+                );
+              })}
+            </div>
             <h4>진입대</h4>
             <div className="pal-grid">
               {data.teams.map((t) => (
@@ -494,7 +524,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
           {mode.kind !== 'select' && (
             <div className="mode-hint">
               {mode.kind === 'place'
-                ? `지도에서 놓을 곳을 누르세요 — ${mode.teamId ? data.teams.find((t) => t.id === mode.teamId)?.name : MAP_TYPES[mode.type].label}`
+                ? `지도에서 놓을 곳을 누르세요 — ${mode.teamId?.startsWith('b:') ? `${mode.teamId.slice(2)} 현황표` : mode.teamId ? data.teams.find((t) => t.id === mode.teamId)?.name : MAP_TYPES[mode.type].label}`
                 : `손가락(마우스)으로 그리세요 — ${mode.line === 'hose' ? '수관' : '진입경로'}`}
               <button className="btn tiny" onClick={() => setMode({ kind: 'select' })}>
                 취소
@@ -548,6 +578,10 @@ function makeIcon(it: GeoItem, data: SessionData, now: number, selected: boolean
   const t = MAP_TYPES[it.type] ?? MAP_TYPES.text;
   const color = it.color ?? t.color;
   const sel = selected ? ' sel' : '';
+  if (it.type === 'building') {
+    const bi = data.buildings.findIndex((x) => x.name === it.label);
+    if (bi >= 0) return boardIcon(bi, data, sel);
+  }
   if (it.type === 'fire') {
     const html = renderToStaticMarkup(
       <div className={`mk-fire${sel}`}>
@@ -622,9 +656,80 @@ function autoLayoutGeo(items: GeoItem[], d: SessionData, lat: number, lng: numbe
     out.push({ id: uid(), type: 'team', teamId: t.id, color: t.color, ...p });
   });
   if (missing.length) notes.push(`진입대 ${missing.length}`);
+  let east = 0;
+  d.buildings.forEach((bd) => {
+    if (out.some((x) => x.type === 'building' && x.label === bd.name)) return;
+    east++;
+    out.push({ id: uid(), type: 'building', label: bd.name, ...offsetMeters(anchor.lat, anchor.lng, 40 * east, 10) });
+    notes.push(`${bd.name} 현황표`);
+  });
   if (!out.some((x) => x.type === 'commandCar')) {
     out.push({ id: uid(), type: 'commandCar', ...offsetMeters(anchor.lat, anchor.lng, -45, -45) });
     notes.push('지휘차');
   }
   return { items: out, summary: notes.length ? notes.join(', ') : '새로 놓을 것 없음' };
+}
+
+/** 지도 위 건물 현황표 — 층마다 호실 색(상태), 화점, 진입대 점 */
+function boardIcon(bi: number, data: SessionData, sel: string): L.DivIcon {
+  const b = data.buildings[bi];
+  const st = data.states[bi];
+  const hidden = new Set(st.hiddenFloors);
+  const floors = floorsDescending(b).filter((f) => !hidden.has(f));
+  const cols = b.defaultUnits;
+  const cell = cols > 10 ? 7 : cols > 6 ? 10 : 14;
+  const row = Math.max(7, Math.min(13, Math.floor(220 / Math.max(floors.length, 1))));
+  const fo = data.fireOrigin?.buildingIdx === bi ? data.fireOrigin : null;
+  const counts: Record<string, number> = {};
+  for (const u of st.units) counts[u.status] = (counts[u.status] ?? 0) + 1;
+  const teamsAt = (f: number) => data.teams.filter((t) => t.status !== 'waiting' && t.floorKey === floorKey(bi, f));
+  const w = 34 + cols * (cell + 1) + 28;
+  const h = 26 + floors.length * (row + 1) + 8;
+  const html = renderToStaticMarkup(
+    <div className={`mk-board${sel}`} style={{ width: w }}>
+      <div className="mb-head">
+        <Building2 size={13} color="#fff" strokeWidth={2.4} />
+        <b>{b.name}</b>
+        {fo && <Flame size={13} color="#fde047" strokeWidth={2.6} />}
+      </div>
+      <div className="mb-rows">
+        {floors.map((f) => {
+          const units = st.units.filter((u) => u.floor === f).sort((x, y) => x.unitIndex - y.unitIndex);
+          const fireRow = fo?.floor === f;
+          return (
+            <div key={f} className={`mb-row${fireRow ? ' fire' : ''}`} style={{ height: row }}>
+              <span className="mb-fl" style={{ fontSize: Math.min(10, row) }}>
+                {floorLabel(b, st, f)}
+              </span>
+              <span className="mb-cells" style={{ gridTemplateColumns: `repeat(${cols}, ${cell}px)` }}>
+                {units.map((u) => (
+                  <i
+                    key={u.id}
+                    className={fo?.unitId === u.id ? 'origin' : ''}
+                    style={{ gridColumn: `${u.unitIndex} / span ${Math.min(u.spanCount, cols - u.unitIndex + 1)}`, background: STATUS[u.status].color }}
+                  />
+                ))}
+              </span>
+              <span className="mb-teams">
+                {teamsAt(f).map((t) => (
+                  <em key={t.id} style={{ background: t.color }} />
+                ))}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mb-foot">
+        {(['danger', 'fireFalseAlarm', 'confirmed', 'unknown'] as const)
+          .filter((k) => counts[k])
+          .map((k) => (
+            <span key={k}>
+              <i style={{ background: STATUS[k].color }} />
+              {STATUS[k].label} {counts[k]}
+            </span>
+          ))}
+      </div>
+    </div>,
+  );
+  return L.divIcon({ html, className: 'geo-mk', iconSize: [w, h + 18], iconAnchor: [w / 2, (h + 18) / 2] });
 }
