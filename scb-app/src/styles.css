@@ -2687,3 +2687,31 @@ a.ai-ladder-bar .ai-ladder-cta {
 .pal-grid.one .pal small {
   margin-left: auto;
 }
+
+.geo-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 500;
+  width: max-content;
+  max-width: calc(100% - 120px);
+  background: rgba(28, 25, 23, 0.86);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+}
+.geo-hint b {
+  color: #fdba74;
+}
+
+.btn.lock-on:hover:not(:disabled) {
+  background: var(--brand-2);
+  border-color: var(--brand-2);
+  color: #fff;
+}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Building2, Crosshair, Flame, HardHat, Hand, Layers, Lock, LockOpen, Printer, Route, Search, Sparkles, Trash2, Waves, X } from 'lucide-react';
+import { Building2, Crosshair, Flame, HardHat, Hand, Layers, Lock, LockOpen, Printer, Route, Search, Trash2, Waves, X } from 'lucide-react';
 import type { GeoItem, GeoLine, GeoState, MapDoc, SessionData } from '../types';
 import { useNow, useSession } from '../session-context';
 import { saveField, saveMap } from '../lib/session';
@@ -232,6 +232,10 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     if (!ml || !geo) return;
     const seen = new Set<string>();
     for (const it of geo.items) {
+      if (it.type === 'team') {
+        const t = data.teams.find((x) => x.id === it.teamId);
+        if (!t || t.status === 'waiting') continue; // 철수·삭제된 대는 숨김
+      }
       seen.add(it.id);
       const icon = makeIcon(it, data, now, selId === it.id);
       let mk = markers.current.get(it.id);
@@ -266,6 +270,13 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       }
     }
   }, [geo, data, now, selId, persist]);
+
+  // ── 현황판 → 지도: 고정된 뒤부터 화점·진입대·건물 현황표가 저절로 나타나고 사라진다 ──
+  useEffect(() => {
+    if (!geo?.locked) return;
+    const r = syncWithBoard(geo.items, data, geo.lat, geo.lng);
+    if (r) persist({ items: r.items });
+  }, [geo, data, persist]);
 
   // ── 선 ──
   useEffect(() => {
@@ -363,16 +374,6 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     }
   };
 
-  const runAuto = () => {
-    const m = lmap.current;
-    if (!m) return;
-    const c = m.getCenter();
-    const { items, summary } = autoLayoutGeo(geo.items, data, c.lat, c.lng);
-    persist({ items });
-    log('작전도', `자동 배치 — ${summary}`);
-    toast(`자동 배치: ${summary}`);
-  };
-
   const patchSel = (patch: { label?: string; color?: string }) =>
     sel && persist({ items: geo.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)) });
 
@@ -450,9 +451,6 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
         <button className={`btn small ${mode.kind === 'draw' && mode.line === 'hose' ? 'on' : ''}`} onClick={() => setMode({ kind: 'draw', line: 'hose' })}>
           <Waves size={16} /> 수관
         </button>
-        <button className="btn small primary" onClick={runAuto} title="지도 가운데를 기준으로 화점·진입대·지휘차를 놓습니다">
-          <Sparkles size={16} /> 자동 배치
-        </button>
         <span className="grow" />
         <button className="btn small" onClick={() => window.print()}>
           <Printer size={16} /> 인쇄
@@ -492,7 +490,6 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
                 >
                   <HardHat size={16} style={{ color: t.color }} />
                   {t.name}
-                  {placedTeam.has(t.id) && <small>배치됨</small>}
                 </button>
               ))}
             </div>
@@ -529,6 +526,11 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
               <button className="btn tiny" onClick={() => setMode({ kind: 'select' })}>
                 취소
               </button>
+            </div>
+          )}
+          {!geo.locked && (
+            <div className="geo-hint">
+              현장이 화면 가운데 오도록 맞춘 뒤 <b>이 위치로 고정</b>을 누르세요. 그때부터 현황판의 화점·진입대·건물 현황이 지도에 저절로 나타납니다.
             </div>
           )}
           {geo.locked && geo.address && (
@@ -625,49 +627,65 @@ function makeIcon(it: GeoItem, data: SessionData, now: number, selected: boolean
 }
 
 /**
- * 지도 자동 배치 — 지도 가운데(또는 이미 놓인 화점)를 기준으로
- *  · 화점이 지정돼 있으면 화점 표시 (없을 때만 새로, 이름은 최신으로)
- *  · 진입 중인 대: 화점 주변 25m 둘레에 고르게 (이미 놓인 대는 그대로)
- *  · 지휘차: 없으면 남서쪽 60m
+ * 현황판 → 지도 따라가기. 지도를 고정한 뒤부터 동작한다.
+ *  · 건물마다 현황표 (고정한 자리 동쪽에 나란히)
+ *  · 화점 지정 → 고정한 자리에 🔥, 해제 → 사라짐 (이름은 늘 최신)
+ *  · 진입한 대 → 화점(없으면 고정한 자리) 둘레 25m 에 나타남. 철수하면 화면에서 숨김
+ *  · 건물을 지우면 그 현황표도 지움
+ * 처음 자리만 정해 주고, 사람이 끌어 옮긴 위치는 그대로 둔다. 바뀐 게 없으면 null.
  */
-function autoLayoutGeo(items: GeoItem[], d: SessionData, lat: number, lng: number) {
-  const out = items.map((x) => ({ ...x }));
+function syncWithBoard(items: GeoItem[], d: SessionData, lat: number, lng: number): { items: GeoItem[]; notes: string[] } | null {
+  let out = items.map((x) => ({ ...x }));
   const notes: string[] = [];
-  let anchor = { lat, lng };
+  const names = new Set(d.buildings.map((b) => b.name));
+
+  // 건물 현황표
+  const before = out.length;
+  out = out.filter((x) => !(x.id.startsWith('auto:board:') && !names.has(x.label ?? '')));
+  if (out.length !== before) notes.push('지운 건물 현황표 정리');
+  d.buildings.forEach((bd, i) => {
+    if (out.some((x) => x.type === 'building' && x.label === bd.name)) return;
+    out.push({ id: `auto:board:${bd.name}`, type: 'building', label: bd.name, ...offsetMeters(lat, lng, 75 + 85 * i, 0) });
+    notes.push(`${bd.name} 현황표`);
+  });
+
+  // 화점
   const fo = d.fireOrigin;
+  let anchor = { lat, lng };
   if (fo && d.buildings[fo.buildingIdx]) {
     const b = d.buildings[fo.buildingIdx];
     const st = d.states[fo.buildingIdx];
     const u = fo.unitId ? st.units.find((x) => x.id === fo.unitId) : null;
     const label = `화점(추정) ${b.name} ${floorLabel(b, st, fo.floor)}${u ? ` ${unitLabel(b, u)}` : ''}`;
     const ex = out.find((x) => x.type === 'fire');
-    if (ex) {
-      ex.label = label;
-      anchor = { lat: ex.lat, lng: ex.lng };
-    } else {
-      out.push({ id: uid(), type: 'fire', lat, lng, label });
+    if (!ex) {
+      out.push({ id: 'auto:fire', type: 'fire', lat, lng, label });
       notes.push('화점');
+    } else {
+      anchor = { lat: ex.lat, lng: ex.lng };
+      if (isAutoFire(ex) && ex.label !== label) {
+        ex.label = label;
+        notes.push('화점 위치 갱신');
+      }
     }
+  } else if (out.some(isAutoFire)) {
+    out = out.filter((x) => !isAutoFire(x));
+    notes.push('화점 해제');
   }
-  const missing = d.teams.filter((t) => t.status !== 'waiting' && !out.some((x) => x.type === 'team' && x.teamId === t.id));
+
+  // 진입대
+  const active = d.teams.filter((t) => t.status !== 'waiting');
+  const missing = active.filter((t) => !out.some((x) => x.type === 'team' && x.teamId === t.id));
+  const taken = out.filter((x) => x.type === 'team').length;
   missing.forEach((t, i) => {
-    const ang = (-90 + (360 / Math.max(missing.length, 1)) * i) * (Math.PI / 180);
-    const p = offsetMeters(anchor.lat, anchor.lng, Math.cos(ang) * 25, -Math.sin(ang) * 25);
-    out.push({ id: uid(), type: 'team', teamId: t.id, color: t.color, ...p });
+    const slot = taken + i;
+    const ang = ((-90 + 45 * slot) * Math.PI) / 180;
+    const r = 25 + 12 * Math.floor(slot / 8);
+    out.push({ id: `auto:team:${t.id}`, type: 'team', teamId: t.id, color: t.color, ...offsetMeters(anchor.lat, anchor.lng, Math.cos(ang) * r, -Math.sin(ang) * r) });
+    notes.push(`${t.name} 진입`);
   });
-  if (missing.length) notes.push(`진입대 ${missing.length}`);
-  let east = 0;
-  d.buildings.forEach((bd) => {
-    if (out.some((x) => x.type === 'building' && x.label === bd.name)) return;
-    east++;
-    out.push({ id: uid(), type: 'building', label: bd.name, ...offsetMeters(anchor.lat, anchor.lng, 40 * east, 10) });
-    notes.push(`${bd.name} 현황표`);
-  });
-  if (!out.some((x) => x.type === 'commandCar')) {
-    out.push({ id: uid(), type: 'commandCar', ...offsetMeters(anchor.lat, anchor.lng, -45, -45) });
-    notes.push('지휘차');
-  }
-  return { items: out, summary: notes.length ? notes.join(', ') : '새로 놓을 것 없음' };
+
+  return notes.length ? { items: out, notes } : null;
 }
 
 /** 지도 위 건물 현황표 — 층마다 호실 색(상태), 화점, 진입대 점 */
@@ -733,3 +751,6 @@ function boardIcon(bi: number, data: SessionData, sel: string): L.DivIcon {
   );
   return L.divIcon({ html, className: 'geo-mk', iconSize: [w, h + 18], iconAnchor: [w / 2, (h + 18) / 2] });
 }
+
+// 자동으로 생긴 화점 (사람이 이름을 바꾼 화점 표시는 건드리지 않는다)
+const isAutoFire = (x: GeoItem) => x.type === 'fire' && (x.id === 'auto:fire' || !x.label || x.label.startsWith('화점(추정)'));
