@@ -3138,3 +3138,12 @@ a.ai-ladder-bar .ai-ladder-cta {
 .ucell .umemo {
   font-size: clamp(13px, min(30cqh, 9.5cqi), 26px);
 }
+
+/* 위쪽 띠 내용이 많아도 화면 전체가 옆으로 밀리지 않게 */
+.board {
+  grid-template-columns: minmax(0, 1fr);
+}
+.top-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
