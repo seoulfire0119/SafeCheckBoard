@@ -3,7 +3,7 @@ import { Accessibility, Building2, ChevronDown, Flame, HardHat, Minus, Plus, Sti
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending, rooftopFloor, STATUS, unitLabel } from '../lib/building';
-import { LEVEL, teamElapsed, teamLevel, teamsByFloor } from '../lib/teams';
+import { LEVEL, teamElapsed, teamLevel, teamMain, teamsByFloor, teamSub } from '../lib/teams';
 import { mmss } from '../lib/format';
 import { Modal } from './Modal';
 
@@ -195,8 +195,8 @@ export function BuildingCard(props: {
                         style={{ background: t.color }}
                         title={`${t.name} ${t.unit} ${t.task} · ${LEVEL[lv].label}`}
                       >
-                        <HardHat size={13} /> {t.name}
-                        {t.unit && <small>{t.unit}</small>}
+                        <HardHat size={13} /> {teamMain(t)}
+                        {teamSub(t) && <small>{teamSub(t)}</small>}
                         <i>{mmss(teamElapsed(t, now))}</i>
                       </span>
                     );

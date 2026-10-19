@@ -30,6 +30,11 @@ export function teamPlace(buildings: Building[], states: BuildingState[], key: s
   return buildings.length > 1 ? `${buildings[p.b].name} ${fl}` : fl;
 }
 
+/** 크게 보일 이름 — 단대명(신수대)이 있으면 단대명, 없으면 1착대 */
+export const teamMain = (t: Team) => t.unit || t.name;
+/** 작게 붙는 이름 — 단대명이 있을 때만 착대 순번 */
+export const teamSub = (t: Team) => (t.unit ? t.name : '');
+
 export function teamTitle(t: Team) {
   return t.unit ? `${t.name}(${t.unit})` : t.name;
 }

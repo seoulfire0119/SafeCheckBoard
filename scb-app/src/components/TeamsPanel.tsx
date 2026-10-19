@@ -3,7 +3,7 @@ import { HardHat, MapPin, Pause, Pencil, Play, Plus, Settings, Square, Wrench } 
 import type { Team } from '../types';
 import { useNow, useSession } from '../session-context';
 import { floorKey, floorLabel, floorsDescending } from '../lib/building';
-import { beep, LEVEL, teamElapsed, teamLevel, teamPlace, teamTitle } from '../lib/teams';
+import { beep, LEVEL, teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
 import { TEAM_COLORS } from '../lib/session';
 import { mmss, uid } from '../lib/format';
 import { Modal } from './Modal';
@@ -57,8 +57,8 @@ export function TeamsPanel() {
             <li key={t.id} className={`team lv-${lv}`} style={{ borderLeftColor: t.color }}>
               <div className="team-top">
                 <span className="tdot" style={{ background: t.color }} />
-                <b>{t.name}</b>
-                <span className="tunit">{t.unit}</span>
+                <b>{teamMain(t)}</b>
+                <span className="tunit">{teamSub(t)}</span>
                 <span className="grow" />
                 <span className="tlevel" style={{ background: LEVEL[lv].color }}>
                   {LEVEL[lv].label}

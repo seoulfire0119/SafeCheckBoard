@@ -8,7 +8,7 @@ import { useNow, useSession } from '../session-context';
 import { saveField, saveMap } from '../lib/session';
 import { MAP_CATS, MAP_TYPES } from '../lib/mapTypes';
 import { floorKey, floorLabel, floorsDescending, STATUS, unitLabel } from '../lib/building';
-import { teamElapsed, teamLevel, teamPlace, teamTitle } from '../lib/teams';
+import { teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
 import { mmss, uid } from '../lib/format';
 import { geocode, offsetMeters, reverseGeocode, searchPlace, tileUrl, VWORLD_ATTR, type Place } from '../lib/vworld';
 import { Inspector, MapTypeIcon } from './MapView';
@@ -342,7 +342,6 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
 
   const sel = geo.items.find((x) => x.id === selId) ?? null;
   const selLine = geo.lines.find((x) => x.id === selId) ?? null;
-  const placedTeam = new Set(geo.items.filter((i) => i.teamId).map((i) => i.teamId!));
 
   const goTo = (lat: number, lng: number, zoom = 18) => {
     lmap.current?.setView([lat, lng], zoom);
@@ -501,21 +500,6 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
                 );
               })}
             </div>
-            <h4>진입대</h4>
-            <div className="pal-grid">
-              {data.teams.map((t) => (
-                <button
-                  key={t.id}
-                  className={`pal team ${mode.kind === 'place' && mode.teamId === t.id ? 'on' : ''}`}
-                  style={{ borderColor: t.color }}
-                  disabled={placedTeam.has(t.id)}
-                  onClick={() => setMode({ kind: 'place', type: 'team', teamId: t.id })}
-                >
-                  <HardHat size={16} style={{ color: t.color }} />
-                  {t.name}
-                </button>
-              ))}
-            </div>
             {MAP_CATS.map((c) => (
               <div key={c.label}>
                 <h4>{c.label}</h4>
@@ -628,9 +612,9 @@ function makeIcon(it: GeoItem, data: SessionData, now: number, selected: boolean
     const html = renderToStaticMarkup(
       <div className={`mk-team lv-${lv}${sel}`} style={{ background: team.color }}>
         <b>
-          <HardHat size={15} color="#fff" strokeWidth={2.4} /> {team.name}
+          <HardHat size={15} color="#fff" strokeWidth={2.4} /> {teamMain(team)}
         </b>
-        <small>{[team.unit, place, team.status === 'waiting' ? '대기' : mmss(teamElapsed(team, now))].filter(Boolean).join(' · ')}</small>
+        <small>{[teamSub(team), place, team.status === 'waiting' ? '대기' : mmss(teamElapsed(team, now))].filter(Boolean).join(' · ')}</small>
         {team.task && <span className="mk-label" style={{ color: team.color, borderColor: team.color }}>{team.task}</span>}
       </div>,
     );

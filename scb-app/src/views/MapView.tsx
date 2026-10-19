@@ -7,7 +7,7 @@ import { useNow, useSession } from '../session-context';
 import { EMPTY_MAP, saveMap, subscribeMap } from '../lib/session';
 import { compressImage, MAP_CATS, MAP_COLORS, MAP_TYPES } from '../lib/mapTypes';
 import { floorLabel, floorsDescending, parseFloorKey, unitLabel } from '../lib/building';
-import { LEVEL, teamElapsed, teamLevel, teamPlace, teamTitle } from '../lib/teams';
+import { LEVEL, teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
 import { escapeHtml, mmss, uid } from '../lib/format';
 import { printHtml } from '../lib/exporter';
 
@@ -579,7 +579,7 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
     }
     const lv = teamLevel(team, data.timerSettings, now);
     const place = teamPlace(data.buildings, data.states, team.floorKey);
-    const sub = [team.unit, place, team.status === 'waiting' ? '대기' : mmss(teamElapsed(team, now))].filter(Boolean).join(' · ');
+    const sub = [teamSub(team), place, team.status === 'waiting' ? '대기' : mmss(teamElapsed(team, now))].filter(Boolean).join(' · ');
     const tw = Math.max(w, 130, Array.from(sub).length * 9 + 24);
     return (
       <g data-id={it.id}>
@@ -598,7 +598,7 @@ function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData
         </rect>
         <HardHat x={it.x - 46} y={y + 7} size={22} color="#fff" strokeWidth={2.2} />
         <text x={it.x + 12} y={y + 25} fontSize={19} fontWeight={800} textAnchor="middle" fill="#fff">
-          {team.name}
+          {teamMain(team)}
         </text>
         <text x={it.x} y={y + 49} fontSize={14} fontWeight={500} textAnchor="middle" fill="#fff" fillOpacity={0.92}>
           {sub}
