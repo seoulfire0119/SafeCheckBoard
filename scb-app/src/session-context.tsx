@@ -3,6 +3,8 @@ import type { ChatMessage, Identity, LogCategory, LogItem, SessionData } from '.
 import { addLog, mutateSession, subscribeChat, subscribeLogs, subscribeSession } from './lib/session';
 import { trackedSave } from './lib/save-status';
 import { subscribeAccess, type AccessRole } from './lib/access';
+import { applyUndo, type Change } from './lib/undo';
+import { saveSessionCache } from './lib/offline';
 
 interface Toast {
   id: number;
@@ -22,8 +24,19 @@ interface Ctx {
   chat: ChatMessage[];
   /** 세션 문서를 고치고(트랜잭션), 로그를 남긴다 */
   act: (fn: (d: SessionData) => void, category?: LogCategory, text?: string) => Promise<void>;
+  /** 이 기기에서 방금 한 현황판 변경 (되돌리기용) */
+  lastAction: UndoEntry | null;
+  undo: () => Promise<void>;
+  dismissUndo: () => void;
   log: (category: LogCategory, text: string, at?: number) => void;
   toast: (text: string, kind?: Toast['kind']) => void;
+}
+
+export interface UndoEntry {
+  id: number;
+  category: LogCategory;
+  text: string;
+  changes: Change[];
 }
 
 const SessionCtx = createContext<Ctx | null>(null);
@@ -100,6 +113,9 @@ export function SessionProvider(props: {
     [code, toast, canEdit],
   );
 
+  const [lastAction, setLastAction] = useState<UndoEntry | null>(null);
+  const undoSeq = useRef(0);
+
   const act = useCallback(
     async (fn: (d: SessionData) => void, category?: LogCategory, text?: string) => {
       if (!canEdit) { toast(data.closed ? '종료된 현장입니다.' : '열람 권한입니다. 개설자에게 편집 권한을 요청하세요.', 'error'); return; }
@@ -107,7 +123,8 @@ export function SessionProvider(props: {
       const actor = { ...meRef.current };
       try {
         // Only display committed state; commit its audit record in the same transaction.
-        await trackedSave(() => mutateSession(code, fn, category && text ? { actor, category, text, at } : undefined));
+        const changes = await trackedSave(() => mutateSession(code, fn, category && text ? { actor, category, text, at } : undefined));
+        if (category && text && changes.length) setLastAction({ id: ++undoSeq.current, category, text, changes });
       } catch (e) {
         toast(`저장 실패: ${(e as Error).message}`, 'error');
       }
@@ -115,9 +132,39 @@ export function SessionProvider(props: {
     [code, toast, canEdit, data.closed],
   );
 
+  // 되돌리기: 방금 바꾼 곳만 원래대로. 그사이 남이 또 바꾼 곳은 건드리지 않는다
+  const undo = useCallback(async () => {
+    const e = lastAction;
+    if (!e) return;
+    setLastAction(null);
+    if (!canEdit) return;
+    let result = { applied: 0, skipped: 0 };
+    try {
+      await trackedSave(() =>
+        mutateSession(
+          code,
+          (d) => { result = applyUndo(d, e.changes); },
+          { actor: { ...meRef.current }, category: e.category, text: `되돌림: ${e.text}`, at: Date.now() },
+        ),
+      );
+      if (result.applied === 0) toast('다른 사람이 이미 바꿔서 되돌릴 것이 없습니다.', 'error');
+      else if (result.skipped) toast(`되돌렸습니다. 그사이 다른 사람이 바꾼 ${result.skipped}곳은 그대로 두었습니다.`);
+      else toast('되돌렸습니다');
+    } catch (err) {
+      toast(`되돌리기 실패: ${(err as Error).message}`, 'error');
+    }
+  }, [lastAction, canEdit, code, toast]);
+  const dismissUndo = useCallback(() => setLastAction(null), []);
+
+  // 통신이 끊겨도 마지막 화면은 보이게 이 기기에 저장 (환자 목록 제외)
+  useEffect(() => {
+    const t = setTimeout(() => saveSessionCache(code, data), 1000);
+    return () => clearTimeout(t);
+  }, [code, data]);
+
   const value = useMemo<Ctx>(
-    () => ({ code, me, setMe, data, logs, chat, act, log, toast, access, canEdit, connected }),
-    [code, me, setMe, data, logs, chat, act, log, toast, access, canEdit, connected],
+    () => ({ code, me, setMe, data, logs, chat, act, log, toast, access, canEdit, connected, lastAction, undo, dismissUndo }),
+    [code, me, setMe, data, logs, chat, act, log, toast, access, canEdit, connected, lastAction, undo, dismissUndo],
   );
   return <SessionCtx.Provider value={value}>{props.children}</SessionCtx.Provider>;
 }

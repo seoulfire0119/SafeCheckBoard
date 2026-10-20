@@ -9,7 +9,11 @@ async function identity(page, dept) {
 test('new scene, viewer join, permission grant, live status and lock', async ({ browser, page }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // 로그인하지 않으면 새 현장을 열 수 없다
   await page.goto('/');
+  await expect(page.getByRole('button', { name: '새 세션 시작', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '관리자 로그인 후 새 현장 시작' })).toBeVisible();
+  await googleOwner(page);
   await page.getByRole('button', { name: '새 세션 시작', exact: true }).click();
   await identity(page, '지휘팀');
   await page.getByPlaceholder('예) 101동').fill('검증 건물');
@@ -72,7 +76,7 @@ async function googleOwner(page) {
     })}.`;
     await signInWithCredential(auth, GoogleAuthProvider.credential(token));
   });
-  await expect(page.getByRole('button', { name: 'test-owner@example.com · 계정 변경' })).toBeVisible();
+  await expect(page.getByText('관리자 로그인: test-owner@example.com')).toBeVisible();
 }
 
 test('Google owner keeps management access from another PC', async ({ browser, page }) => {

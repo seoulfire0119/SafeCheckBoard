@@ -31,7 +31,9 @@ Firebase 프로젝트 `safecheckboard`(Firestore + Hosting)를 그대로 쓴다.
 
 새 PC에서는 이 폴더에서 `npm ci`, `npm run dev`를 실행합니다. GitHub Actions 빌드 파일도 추가되어 있으며, main에 올린 뒤 성공한 **Actions → SafeCheckBoard web build → Artifacts**에서 웹 빌드 ZIP을 받을 수 있습니다. 이 ZIP은 HTTP 서버 또는 Firebase Hosting에서 제공해야 하며 index.html을 파일로 더블클릭하는 방식은 지원하지 않습니다.
 
-새 참여자는 열람자로 시작하며 개설자가 편집 권한을 부여합니다. 여러 PC에서 같은 관리 권한을 사용하려면 먼저 Google 로그인 후 새 현장을 만드세요. 기존 현장은 Google 계정 `119gpt1@gmail.com`으로 로그인하면 관리할 수 있습니다. [운영 권한 이전 안내](docs/운영-권한-이전.md)에 이전 방법과 주의사항이 있습니다.
+새 현장(세션)은 **Google 계정으로 로그인한 관리자만** 만들 수 있습니다 (앱 화면과 Firestore 규칙 모두에서 막음). 참여자는 로그인 없이 코드로 들어오며 열람자로 시작하고, 개설자가 편집 권한을 부여합니다. 같은 Google 계정으로 로그인하면 다른 PC에서도 같은 관리 권한을 씁니다.
+
+작전도 표시물·선은 `sessions/{코드}/mapObjects/{id}`에 하나씩 저장하며, 놓은 사람(by)과 관리자만 고치고 지울 수 있습니다. 도면 사진은 `secondary/mapBg`에 따로 저장합니다. 예전 현장의 작전도는 관리자가 열 때 자동으로 옮겨집니다. 기존 현장은 Google 계정 `119gpt1@gmail.com`으로 로그인하면 관리할 수 있습니다. [운영 권한 이전 안내](docs/운영-권한-이전.md)에 이전 방법과 주의사항이 있습니다.
 
 ```bash
 npm ci                            # Firebase 웹 설정은 .env 에 들어 있음

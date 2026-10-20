@@ -2,6 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    // Google 계정으로 로그인(또는 익명 기기에 Google 을 연결)한 사람 — 현장을 새로 열 수 있다
+    function googleUser() {
+      return signedIn() && request.auth.token.firebase.identities.keys().hasAny(['google.com']);
+    }
     function session(code) { return get(/databases/$(database)/documents/sessions/$(code)).data; }
     function member(code) {
       return signedIn() && exists(/databases/$(database)/documents/sessions/$(code)/members/$(request.auth.uid));
@@ -22,7 +26,7 @@ service cloud.firestore {
     match /sessions/{code} {
       allow get: if member(code) || owner(code);
       allow list, delete: if false;
-      allow create: if signedIn() && code.matches('[A-Z0-9]{6}')
+      allow create: if googleUser() && code.matches('[A-Z0-9]{6}')
         && request.resource.data.ownerId == request.auth.uid && request.resource.data.closed == false
         && request.resource.data.buildings.size() >= 1
         && validSession(request.resource.data)
@@ -74,11 +78,38 @@ service cloud.firestore {
           && request.resource.data.fields is map;
         allow delete: if owner(code) && session(code).closed == false;
       }
+      // 작전도: map = 모드·지도 위치 등 (예전 현장은 표시물 목록도 여기 들어 있음), mapBg = 도면 사진
       match /secondary/{id} {
         allow read: if member(code);
-        allow create, update: if editor(code) && id == 'map'
-          && request.resource.data.items is list && request.resource.data.lines is list;
+        allow create, update: if editor(code) && (
+          (id == 'map' && request.resource.data.items is list && request.resource.data.lines is list
+            && request.resource.data.items.size() <= 500 && request.resource.data.lines.size() <= 500)
+          || (id == 'mapBg' && request.resource.data.keys().hasOnly(['bg', 'updatedAt'])
+            && (request.resource.data.bg == null || request.resource.data.bg is string)));
         allow delete: if false;
+      }
+      // 작전도 표시물·선 하나하나. 놓은 사람(by)과 관리자만 고치고 지울 수 있다.
+      // 현황판에서 저절로 생기는 표시물(id 가 auto: 로 시작, by 없음)은 편집자 누구나 맞출 수 있다.
+      match /mapObjects/{id} {
+        function objBy(d) { return d.get('by', null); }
+        function validObj(d) {
+          return d.space in ['geo', 'plan'] && d.kind in ['item', 'line'] && d.size() <= 25
+            && (objBy(d) == null || objBy(d) is string)
+            && (!('label' in d) || (d.label is string && d.label.size() <= 100))
+            && (!('pts' in d) || (d.pts is list && d.pts.size() <= 4000))
+            && (!('points' in d) || (d.points is list && d.points.size() <= 4000));
+        }
+        function isAuto() { return id.matches('auto:.*'); }
+        allow read: if member(code);
+        allow create: if editor(code) && validObj(request.resource.data)
+          && (objBy(request.resource.data) == request.auth.uid
+            || (isAuto() && objBy(request.resource.data) == null)
+            || owner(code));
+        allow update: if editor(code) && validObj(request.resource.data)
+          && objBy(request.resource.data) == objBy(resource.data)
+          && request.resource.data.space == resource.data.space && request.resource.data.kind == resource.data.kind
+          && (owner(code) || objBy(resource.data) == request.auth.uid || isAuto());
+        allow delete: if editor(code) && (owner(code) || objBy(resource.data) == request.auth.uid || isAuto());
       }
     }
     match /{document=**} { allow read, write: if false; }

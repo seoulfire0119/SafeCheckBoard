@@ -776,6 +776,115 @@ a.ai-ladder-bar .ai-ladder-cta {
   flex-direction: column;
   min-height: 0;
 }
+/* 큰 화면용 요약 — 경과·화점·진입대·인명 */
+.summary-bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+  padding: 6px 12px;
+  background: #1c1917;
+  color: #e7e5e4;
+}
+.summary-bar .sm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.summary-bar .sm > span {
+  font-size: 13px;
+  color: #a8a29e;
+}
+.summary-bar .sm > b {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+.summary-bar .sm small {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6d3d1;
+}
+.summary-bar .sm em {
+  font-style: normal;
+  font-weight: 800;
+  color: #fde047;
+}
+.summary-bar .sm.fire > b,
+.summary-bar .sm.fire > svg {
+  color: #f87171;
+}
+.summary-bar .sm.danger > svg,
+.summary-bar .sm.danger em,
+.summary-bar i.red {
+  color: #f87171;
+}
+.summary-bar i {
+  font-style: normal;
+}
+.large-text .summary-bar .sm > b {
+  font-size: 26px;
+}
+
+/* 방금 바꾼 것 + 되돌리기 */
+.undo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px;
+  border-radius: 14px;
+  background: #1c1917;
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.undo-bar .undo-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.undo-bar .icon-btn {
+  color: #d6d3d1;
+}
+.risk-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.risk-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.risk-list li svg {
+  flex: none;
+  margin-top: 2px;
+}
+.board.full > .summary-bar {
+  padding-right: 230px;
+}
+.error-box .row-btns {
+  justify-content: center;
+}
+
 /* 전체화면: 위쪽 띠를 숨기고, 오른쪽 위에 작은 「끝내기」만 띄운다 */
 .board.full > .topbar,
 .board.full > .safety-strip,

@@ -175,6 +175,43 @@ export function resizeBuilding(d: SessionData, idx: number, nb: Building): numbe
   return lost;
 }
 
+/**
+ * 여러 칸을 한꺼번에 바꾸기 전에 확인할 것 — 실수로 중요한 표시를 덮어쓰지 않게.
+ *  · 화점(추정)으로 지정된 칸·층이 섞여 있음
+ *  · 화재층·연소확대층·자원대기소였던 칸이 다른 상태로 바뀜
+ *  · 확인완료였던 칸이 미확인으로 되돌아감
+ *  · 피난약자 칸을 확인완료로 한꺼번에 처리함
+ * 없으면 빈 목록.
+ */
+export function bulkStatusRisks(d: SessionData, bi: number, units: Unit[], next: UnitStatus): string[] {
+  const b = d.buildings[bi];
+  const st = d.states[bi];
+  if (!b || !st) return [];
+  const fo = d.fireOrigin;
+  const changing = units.filter((u) => u.status !== next);
+  const names = (us: Unit[]) => {
+    const n = us.slice(0, 4).map((u) => unitLabel(b, u)).join(', ');
+    return us.length > 4 ? `${n} 외 ${us.length - 4}칸` : n;
+  };
+  const out: string[] = [];
+  if (fo && fo.buildingIdx === bi && next !== 'danger') {
+    const fu = fo.unitId ? changing.find((u) => u.id === fo.unitId) : null;
+    if (fu) out.push(`${floorLabel(b, st, fu.floor)} ${unitLabel(b, fu)}은(는) 화점(추정)으로 지정된 칸입니다.`);
+    else if (!fo.unitId && changing.some((u) => u.floor === fo.floor)) out.push(`${floorLabel(b, st, fo.floor)}은(는) 화점(추정) 층입니다.`);
+  }
+  const important: UnitStatus[] = ['danger', 'fireFalseAlarm', 'resourceBase', ...(next === 'unknown' ? (['confirmed'] as UnitStatus[]) : [])];
+  for (const s of important) {
+    if (s === next) continue;
+    const us = changing.filter((u) => u.status === s);
+    if (us.length) out.push(`「${STATUS[s].label}」 ${us.length}칸 (${names(us)})이 「${STATUS[next].label}」(으)로 바뀝니다.`);
+  }
+  if (next === 'confirmed') {
+    const v = changing.filter((u) => u.vulnerable);
+    if (v.length) out.push(`피난약자 ${v.length}칸 (${names(v)})이 포함되어 있습니다. 대피·구조를 확인했는지 확인하세요.`);
+  }
+  return out;
+}
+
 export function floorKey(buildingIdx: number, floor: number) {
   return `${buildingIdx}_${floor}`;
 }

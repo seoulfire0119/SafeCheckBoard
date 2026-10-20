@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { Building2, Crosshair, Flame, HardHat, Hand, Lock, LockOpen, Printer, Route, Search, Trash2, Waves, X } from 'lucide-react';
 import type { GeoItem, GeoLine, GeoState, MapDoc, SessionData } from '../types';
 import { useNow, useSession } from '../session-context';
-import { MapEditDenied, saveField, saveMap, updateGeo } from '../lib/session';
+import { addMapObject, removeMapObject, saveField, saveMap, saveMapObjects, updateMapObject } from '../lib/session';
 import { canTouch, itemScale, MAP_CATS, MAP_TYPES } from '../lib/mapTypes';
 import { deviceUid } from '../firebase';
 import { PaletteDrawer, PaletteGroup } from '../components/PaletteGroup';
@@ -85,37 +85,38 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   who.current = { uid: myUid, isOwner };
   const mayTouch = useCallback((x: { by?: string }) => canTouch(x, myUid, isOwner), [myUid, isOwner]);
 
-  /** 저장하는 순간의 최신 작전도 위에 바꾼다 (다른 기기의 변경과 충돌하지 않음) */
-  const editGeo = useCallback(
-    (fn: (g: GeoState) => Partial<Pick<GeoState, 'items' | 'lines'>> | null, logText: string) => {
-      if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return Promise.resolve(); }
-      return updateGeo(code, fn, logText).catch((e: Error) => toast(`작전도 저장 실패: ${e.message}`, 'error'));
-    },
-    [code, toast],
+  // 표시물·선은 하나씩 따로 저장한다. 남의 것은 화면에서도 막고, 서버 규칙으로도 막는다
+  const fail = useCallback(
+    (e: Error & { code?: string }) =>
+      toast(e.code === 'permission-denied' ? '다른 사람이 놓은 것은 관리자만 고치거나 지울 수 있습니다.' : `작전도 저장 실패: ${e.message}`, 'error'),
+    [toast],
   );
-  const denied = () => new MapEditDenied('다른 사람이 놓은 표시물은 관리자만 고치거나 지울 수 있습니다.');
+  const guardEdit = useCallback(
+    (x: { by?: string } | undefined) => {
+      if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return false; }
+      if (x && !canTouch(x, who.current.uid, who.current.isOwner)) { toast('다른 사람이 놓은 것은 관리자만 고치거나 지울 수 있습니다.', 'error'); return false; }
+      return true;
+    },
+    [toast],
+  );
   const addItem = useCallback(
-    (it: GeoItem) => editGeo((g) => ({ items: [...g.items, { ...it, by: who.current.uid }] }), `표시물 추가: ${it.label || MAP_TYPES[it.type]?.label || it.type}`),
-    [editGeo],
+    (it: GeoItem) => {
+      if (!guardEdit(undefined)) return;
+      addMapObject(code, 'geo', 'item', it, `표시물 추가: ${it.label || MAP_TYPES[it.type]?.label || it.type}`).catch(fail);
+    },
+    [code, guardEdit, fail],
   );
   const changeItem = useCallback(
-    (id: string, patch: Partial<GeoItem>, text: string) =>
-      editGeo((g) => {
-        const x = g.items.find((i) => i.id === id);
-        if (!x) return null;
-        if (!canTouch(x, who.current.uid, who.current.isOwner)) throw denied();
-        Object.assign(x, patch);
-        return { items: g.items };
-      }, text),
-    [editGeo],
+    (id: string, patch: Partial<GeoItem>, text: string) => {
+      if (!guardEdit(latestItems.current?.find((i) => i.id === id))) return;
+      updateMapObject(code, id, patch, text).catch(fail);
+    },
+    [code, guardEdit, fail],
   );
-  const removeItem = (id: string, text: string) =>
-    editGeo((g) => {
-      const x = g.items.find((i) => i.id === id);
-      if (!x) return null;
-      if (!canTouch(x, who.current.uid, who.current.isOwner)) throw denied();
-      return { items: g.items.filter((i) => i.id !== id) };
-    }, text);
+  const removeItem = (id: string, text: string) => {
+    if (!guardEdit(latestItems.current?.find((i) => i.id === id))) return;
+    removeMapObject(code, id, text).catch(fail);
+  };
 
   // ── 처음 위치: 저장된 위치 → 내 GPS → 재난발생현황 장소 → 서울시청 ──
   useEffect(() => {
@@ -263,8 +264,8 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       preview.remove();
       preview = null;
       if (pts.length >= 2) {
-        const line: GeoLine = { id: uid(), kind: mode.line, pts: pts.flatMap((p) => [p.lat, p.lng]), color: style.color!, by: who.current.uid };
-        editGeo((g) => ({ lines: [...g.lines, line] }), `${mode.line === 'hose' ? '수관' : '진입경로'} 그리기`);
+        const line: GeoLine = { id: uid(), kind: mode.line, pts: pts.flatMap((p) => [p.lat, p.lng]), color: style.color! };
+        if (guardEdit(undefined)) addMapObject(code, 'geo', 'line', line, `${mode.line === 'hose' ? '수관' : '진입경로'} 그리기`).catch(fail);
       }
       pts = [];
     };
@@ -280,7 +281,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       if (!lockedRef.current) m.dragging.enable();
       preview?.remove();
     };
-  }, [mode, editGeo]);
+  }, [mode, code, guardEdit, fail]);
 
   // ── 표시물 그리기 (데이터가 바뀔 때마다 맞춘다) ──
   // 끄는 도중에 모양을 새로 그리면 손가락에서 놓쳐 버리므로:
@@ -368,17 +369,17 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   useEffect(() => {
     const g = latestGeo.current;
     if (!g?.locked || !editable.current || syncing.current) return;
-    if (!syncWithBoard(g.items, data, g.lat, g.lng)) return;
+    const r = syncWithBoard(g.items, data, g.lat, g.lng);
+    if (!r) return;
+    // 저절로 생기는 표시물(auto:)만 놓고 지운다. 사람이 놓은 표시물은 건드리지 않는다
+    const cur = new Map(g.items.map((x) => [x.id, x]));
+    const next = new Map(r.items.map((x) => [x.id, x]));
+    const isAuto = (id: string) => id.startsWith('auto:');
+    const upserts = r.items.filter((x) => isAuto(x.id) && JSON.stringify(cur.get(x.id)) !== JSON.stringify(x)).map((x) => ({ ...x, by: null }));
+    const removes = g.items.filter((x) => isAuto(x.id) && !next.has(x.id)).map((x) => x.id);
+    if (!upserts.length && !removes.length) return;
     syncing.current = true;
-    updateGeo(
-      code,
-      (cur) => {
-        const r = cur.locked ? syncWithBoard(cur.items, data, cur.lat, cur.lng) : null;
-        return r ? { items: r.items } : null;
-      },
-      '작전도 현황판 따라가기',
-      { track: false },
-    )
+    saveMapObjects(code, 'geo', 'item', upserts, removes, `작전도 현황판 따라가기: ${r.notes.join(', ')}`, { track: false })
       .catch(() => {
         // 저장이 겹쳐 실패하면 조금 뒤 최신 작전도로 한 번 더 맞춘다 (사용자에게는 알리지 않음)
         if (syncRetry < 3) setTimeout(() => setSyncRetry((n) => n + 1), 2000 + Math.random() * 2000);
@@ -496,13 +497,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     if (sel) {
       removeItem(sel.id, `표시물 삭제: ${selName}`);
     } else if (selLine) {
-      const id = selLine.id;
-      editGeo((g) => {
-        const x = g.lines.find((l) => l.id === id);
-        if (!x) return null;
-        if (!canTouch(x, who.current.uid, who.current.isOwner)) throw denied();
-        return { lines: g.lines.filter((l) => l.id !== id) };
-      }, `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
+      if (guardEdit(selLine)) removeMapObject(code, selLine.id, `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`).catch(fail);
     }
     setSelId(null);
   };

@@ -17,6 +17,9 @@ import { SaveIndicator } from '../components/SaveIndicator';
 import { discardSaves, hasUnsavedChanges, retrySaves, useSaveStatus } from '../lib/save-status';
 import { LEVEL, teamLevel, teamTitle } from '../lib/teams';
 import { useNow } from '../session-context';
+import { SummaryBar } from '../components/SummaryBar';
+import { UndoBar } from '../components/UndoBar';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 type View = 'status' | 'map' | 'casualty' | 'reports';
 const VIEWS: { key: View; label: string; icon: LucideIcon }[] = [
@@ -27,7 +30,7 @@ const VIEWS: { key: View; label: string; icon: LucideIcon }[] = [
 ];
 
 export function Board({ onLeave }: { onLeave: () => void }) {
-  const { code, me, setMe, data, logs, toast, log, access, canEdit } = useSession();
+  const { code, me, setMe, data, logs, toast, log, access, canEdit, connected } = useSession();
   const [view, setView] = useState<View>(() => {
     try { const saved = sessionStorage.getItem('scb.view'); return VIEWS.find((v) => v.key === saved)?.key ?? 'status'; }
     catch { return 'status'; }
@@ -57,8 +60,27 @@ export function Board({ onLeave }: { onLeave: () => void }) {
     setFull(false);
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
   };
+  // 현장에 들어와 있는 동안 화면이 꺼지거나 잠기지 않게 (모니터·태블릿에 띄워 두는 용도)
+  useEffect(() => {
+    type Lock = { release: () => Promise<void> };
+    const wl = (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<Lock> } }).wakeLock;
+    if (!wl) return;
+    let lock: Lock | null = null;
+    let gone = false;
+    const get = () => {
+      if (document.visibilityState !== 'visible') return;
+      wl.request('screen').then((l) => { if (gone) void l.release(); else lock = l; }).catch(() => {});
+    };
+    get();
+    // 다른 앱을 보다 돌아오면 다시 켠다 (브라우저가 화면이 가려지면 자동으로 풀기 때문)
+    document.addEventListener('visibilitychange', get);
+    return () => {
+      gone = true;
+      document.removeEventListener('visibilitychange', get);
+      void lock?.release().catch(() => {});
+    };
+  }, []);
   const alerts = data.teams.filter((t) => ['warning', 'danger'].includes(teamLevel(t, data.timerSettings, now)));
-  const missing = data.personnelStats.reduce((n, s) => n + s.notFound, 0);
 
   const pick = (v: View) => {
     setView(v);
@@ -133,18 +155,28 @@ export function Board({ onLeave }: { onLeave: () => void }) {
       <div className="safety-strip">
         <SaveIndicator /><TeamAlarm />
         {data.closed && <strong>종료된 현장 · 읽기 전용</strong>}
-        {missing > 0 && <strong>미발견 {missing}명</strong>}
-        {data.fireOrigin && <strong>화점 {data.buildings[data.fireOrigin.buildingIdx]?.name} {data.fireOrigin.floor}층</strong>}
         {alerts.map((t) => <strong key={t.id} style={{ color: LEVEL[teamLevel(t, data.timerSettings, now)].color }}>{teamTitle(t)} {LEVEL[teamLevel(t, data.timerSettings, now)].label}</strong>)}
       </div>
-      {!canEdit && <p className="read-only-notice">{data.closed ? '현장이 종료되어 입력이 잠겼습니다.' : '열람 중입니다. 편집하려면 권한 관리에서 기기 번호를 확인하고 개설자에게 알려주세요.'}</p>}
+      <SummaryBar data={data} now={now} />
+      {!canEdit && (
+        <p className="read-only-notice">
+          {data.closed
+            ? '현장이 종료되어 입력이 잠겼습니다.'
+            : !connected
+              ? '서버와 연결되지 않아 이 기기에 저장된 마지막 화면을 보여 주고 있습니다. 연결되면 자동으로 최신 현황으로 바뀝니다.'
+              : '열람 중입니다. 편집하려면 권한 관리에서 기기 번호를 확인하고 개설자에게 알려주세요.'}
+        </p>
+      )}
 
       <main className="view" data-readonly={!canEdit}>
-        {view === 'status' && <StatusView />}
-        {view === 'map' && <MapView />}
-        {view === 'casualty' && <CasualtyView />}
-        {view === 'reports' && <ReportsView />}
+        <ErrorBoundary key={view} name={VIEWS.find((v) => v.key === view)?.label ?? view}>
+          {view === 'status' && <StatusView />}
+          {view === 'map' && <MapView />}
+          {view === 'casualty' && <CasualtyView />}
+          {view === 'reports' && <ReportsView />}
+        </ErrorBoundary>
       </main>
+      <UndoBar />
 
       {dialog === 'access' && <AccessDialog onClose={() => setDialog(null)} />}
 

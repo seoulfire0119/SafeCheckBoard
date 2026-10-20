@@ -88,8 +88,15 @@ test('audit records enforce authenticated actor and are append-only', async () =
 test('legacy top-level briefings are inaccessible', async () => {
   await assertFails(getDoc(doc(db('editor'), 'briefings', 'legacy')));
 });
+test('only Google-signed-in users can open a new session', async () => {
+  const anon = env.authenticatedContext('anon-1', { firebase: { sign_in_provider: 'anonymous', identities: {} } }).firestore();
+  await assertFails(setDoc(doc(anon, 'sessions', 'ANON23'), session('anon-1')));
+  // 익명 기기에 Google 을 연결한 경우도 된다
+  const linked = env.authenticatedContext('linked-1', { firebase: { sign_in_provider: 'anonymous', identities: { 'google.com': ['123'] } } }).firestore();
+  await assertSucceeds(setDoc(doc(linked, 'sessions', 'LINK23'), session('linked-1')));
+});
 test('new session and owner membership can be created together', async () => {
-  const d = db('new-owner');
+  const d = env.authenticatedContext('new-owner', { firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['456'] } } }).firestore();
   const batch = writeBatch(d);
   batch.set(doc(d, 'sessions', 'NEW234'), session('new-owner'));
   batch.set(doc(d, 'sessions', 'NEW234', 'members', 'new-owner'), { role: 'owner', name: '', joinedAt: serverTimestamp() });
@@ -144,6 +151,42 @@ test('map item additions from independent clients merge transactionally', async 
   ]);
   const map = (await getDoc(ref(d, 'secondary', 'map'))).data();
   if (map.items.length !== 2) throw new Error('Map addition lost');
+});
+test('map objects: only the placer and the owner can change or delete them', async () => {
+  await env.withSecurityRulesDisabled(async (c) => {
+    await setDoc(ref(c.firestore(), 'members', 'editor2'), { role: 'editor', name: 'editor2', joinedAt: serverTimestamp() });
+  });
+  const mine = services(db('editor'));
+  await mine.addMapObject(code, 'geo', 'item', { id: 'p1', type: 'pumpTruck', lat: 1, lng: 2 }, '추가');
+  const obj = (d) => ref(d, 'mapObjects', 'p1');
+  if ((await getDoc(obj(db('editor')))).data().by !== 'editor') throw new Error('placer not recorded');
+  // 다른 편집자는 옮기거나 지울 수 없다
+  await assertFails(updateDoc(obj(db('editor2')), { lat: 5 }));
+  await assertFails(deleteDoc(obj(db('editor2'))));
+  // 남의 이름으로 놓을 수도 없다
+  await assertFails(setDoc(ref(db('editor2'), 'mapObjects', 'p2'), { space: 'geo', kind: 'item', type: 'x', lat: 1, lng: 1, by: 'editor' }));
+  // 놓은 사람이 주인을 바꿀 수 없다
+  await assertFails(updateDoc(obj(db('editor')), { by: 'editor2' }));
+  // 본인과 관리자는 된다
+  await assertSucceeds(updateDoc(obj(db('editor')), { lat: 3 }));
+  await assertSucceeds(updateDoc(obj(db('owner')), { lat: 4 }));
+  await assertSucceeds(deleteDoc(obj(db('owner'))));
+  // 열람자는 아무것도 놓을 수 없다
+  await assertFails(setDoc(ref(db('viewer'), 'mapObjects', 'v1'), { space: 'geo', kind: 'item', type: 'x', lat: 1, lng: 1, by: 'viewer' }));
+});
+test('map objects: board-following auto objects can be kept up to date by any editor', async () => {
+  await services(db('editor')).saveMapObjects(code, 'geo', 'item', [{ id: 'auto:fire', type: 'fire', lat: 1, lng: 1, by: null }], [], '따라가기');
+  await assertSucceeds(setDoc(ref(db('editor'), 'mapObjects', 'auto:fire'), { space: 'geo', kind: 'item', type: 'fire', lat: 2, lng: 2, by: null }));
+  await assertSucceeds(deleteDoc(ref(db('editor'), 'mapObjects', 'auto:fire')));
+  // auto 가 아닌데 주인 없는 표시물은 관리자만 만든다 (예전 작전도 옮기기)
+  await assertFails(setDoc(ref(db('editor'), 'mapObjects', 'x1'), { space: 'geo', kind: 'item', type: 'x', lat: 1, lng: 1, by: null }));
+  await assertSucceeds(setDoc(ref(db('owner'), 'mapObjects', 'x1'), { space: 'geo', kind: 'item', type: 'x', lat: 1, lng: 1, by: null }));
+});
+test('map background is stored separately and only as a picture', async () => {
+  await assertSucceeds(setDoc(ref(db('editor'), 'secondary', 'mapBg'), { bg: 'data:image/jpeg;base64,AAAA' }));
+  await assertFails(setDoc(ref(db('editor'), 'secondary', 'mapBg'), { bg: 'x', other: 1 }));
+  await assertFails(setDoc(ref(db('viewer'), 'secondary', 'mapBg'), { bg: null }));
+  await assertFails(setDoc(ref(db('editor'), 'secondary', 'other'), { items: [], lines: [] }));
 });
 test('status change and its audit are committed together', async () => {
   const d = db('editor'); const api = services(d);

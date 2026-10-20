@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Flame, LogIn, Plus, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Flame, Lock, LogIn, Plus, UserRound } from 'lucide-react';
 import type { Identity, SessionData } from './types';
 import { identityText, loadIdentity, saveIdentity } from './lib/identity';
 import { addLog, createSession, generateCode, sessionExists, subscribeSession } from './lib/session';
@@ -9,7 +9,8 @@ import { BuildingForm } from './screens/BuildingForm';
 import { Board } from './screens/Board';
 import { SessionProvider, useToast } from './session-context';
 import { usingEmulator } from './firebase';
-import { GoogleLoginButton } from './components/GoogleLoginButton';
+import { GoogleLoginButton, useGoogleEmail } from './components/GoogleLoginButton';
+import { loadSessionCache } from './lib/offline';
 
 type Phase = { kind: 'home' } | { kind: 'setup' } | { kind: 'session'; code: string };
 
@@ -114,6 +115,7 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
   const [code, setCode] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const googleEmail = useGoogleEmail();
 
   const join = async () => {
     const c = code.trim().toUpperCase();
@@ -144,10 +146,21 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
             <Plus size={22} />
           </div>
           <h2>새 현장 시작</h2>
-          <p className="hint">새 세션을 만들고 6자리 코드를 받습니다. 코드를 공유하면 다른 사람도 같은 화면을 봅니다.</p>
-          <button className="btn primary block" onClick={props.onNew}>
-            새 세션 시작
-          </button>
+          {googleEmail ? (
+            <>
+              <p className="hint">새 세션을 만들고 6자리 코드를 받습니다. 코드를 공유하면 다른 사람도 같은 화면을 봅니다.</p>
+              <button className="btn primary block" onClick={props.onNew}>
+                새 세션 시작
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="hint">
+                <Lock size={14} /> 새 현장은 <b>관리자(Google 로그인)</b>만 열 수 있습니다. 현장에 참여만 하는 분은 오른쪽에서 코드를 입력하세요.
+              </p>
+              {googleEmail === '' && <GoogleLoginButton className="btn primary block" label="관리자 로그인 후 새 현장 시작" />}
+            </>
+          )}
         </section>
         <section className="card">
           <div className="card-icon alt">
@@ -175,10 +188,12 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
           </form>
         </section>
       </div>
-      <div className="home-admin">
-        <GoogleLoginButton />
-        <p className="hint">현장 개설자만 필요합니다. 로그인하면 다른 PC에서도 같은 관리 권한을 씁니다.</p>
-      </div>
+      {googleEmail && (
+        <div className="home-admin">
+          <GoogleLoginButton />
+          <p className="hint">관리자로 로그인되어 있습니다. 다른 PC에서도 같은 계정으로 로그인하면 같은 관리 권한을 씁니다.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -187,6 +202,20 @@ function NewSession(props: { me: Identity; onBack: () => void; onCreated: (code:
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
+  const googleEmail = useGoogleEmail();
+  if (googleEmail === '')
+    return (
+      <div className="setup">
+        <button className="btn ghost" onClick={props.onBack}>
+          <ArrowLeft size={18} /> 처음으로
+        </button>
+        <section className="card">
+          <h2>관리자 로그인이 필요합니다</h2>
+          <p className="hint">새 현장은 관리자(Google 로그인)만 열 수 있습니다.</p>
+          <GoogleLoginButton className="btn primary block" label="관리자 로그인 (Google)" />
+        </section>
+      </div>
+    );
   return (
     <div className="setup">
       <button className="btn ghost" onClick={props.onBack}>
@@ -205,7 +234,8 @@ function NewSession(props: { me: Identity; onBack: () => void; onCreated: (code:
               await addLog(code, props.me, '세션', `세션 생성 — ${title.trim() || '현장'} / ${b.name}`);
               props.onCreated(code);
             } catch (e) {
-              toast(`세션 생성 실패: ${(e as Error).message}`, 'error');
+              const denied = (e as { code?: string }).code === 'permission-denied';
+              toast(denied ? '세션 생성 실패: 관리자(Google) 로그인이 필요합니다. 로그인 후 다시 시도하세요.' : `세션 생성 실패: ${(e as Error).message}`, 'error');
               setBusy(false);
             }
           }}
@@ -222,7 +252,9 @@ function NewSession(props: { me: Identity; onBack: () => void; onCreated: (code:
 
 function SessionLoader(props: { code: string; me: Identity; setMe: (v: Identity) => void; onLeave: () => void }) {
   const { code, onLeave } = props;
-  const [data, setData] = useState<SessionData | null | undefined>(undefined);
+  // 이 기기에 저장해 둔 마지막 화면이 있으면 먼저 보여 준다 (통신이 끊긴 채 새로고침해도 보이게).
+  // 서버와 연결되면 바로 최신으로 바뀌고, 그 전까지는 권한 확인이 안 되어 읽기 전용이다.
+  const [data, setData] = useState<SessionData | null | undefined>(() => loadSessionCache(code)?.value);
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -238,7 +270,7 @@ function SessionLoader(props: { code: string; me: Identity; setMe: (v: Identity)
     if (data) addLog(code, props.me, '세션', '세션 입장').catch(() => {});
   }, [code, !!data]); // 처음 불러왔을 때 한 번만
 
-  if (err)
+  if (err && !data)
     return (
       <div className="center-msg">
         <p className="error">연결 오류: {err}</p>

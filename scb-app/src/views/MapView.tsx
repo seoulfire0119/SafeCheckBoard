@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { Building2, FileImage, Flame, Grid3x3, Map as MapIcon, Hand, HardHat, ImageUp, Maximize, MapPin, Minus, Plus, Printer, Route, Sparkles, Trash2, Waves, Wrench } from 'lucide-react';
 import type { MapDoc, MapItem, MapLine, SessionData, Team } from '../types';
 import { MAP_ICON } from '../components/icons';
 import { GeoMap } from './GeoMap';
 import { useNow, useSession } from '../session-context';
-import { EMPTY_MAP, MapEditDenied, saveMap, subscribeMap, updatePlan } from '../lib/session';
+import {
+  addMapObject,
+  EMPTY_MAP,
+  hasLegacy,
+  migrateLegacyMap,
+  removeMapObject,
+  saveMap,
+  saveMapBg,
+  saveMapObjects,
+  subscribeMap,
+  updateMapObject,
+  type LegacyMap,
+} from '../lib/session';
+import { loadMapCache, saveMapCache } from '../lib/offline';
 import { deviceUid } from '../firebase';
 import { PaletteDrawer, PaletteGroup } from '../components/PaletteGroup';
 import { canTouch, compressImage, itemScale, MAP_CATS, MAP_COLORS, MAP_TYPES, SCALE_MAX, SCALE_MIN, SCALE_STEP } from '../lib/mapTypes';
@@ -25,11 +38,16 @@ type Drag =
 
 const sizeOf = (it: MapItem) => ({ w: it.w ?? MAP_TYPES[it.type]?.w ?? 80, h: it.h ?? MAP_TYPES[it.type]?.h ?? 42 });
 
+const warnedMapErrors = new Set<string>();
+const migrationFailed = new Set<string>();
+
 export function MapView() {
   const { code, data, toast, canEdit, access } = useSession();
   const now = useNow();
-  const [map, setMap] = useState<MapDoc>(EMPTY_MAP);
-  const [loaded, setLoaded] = useState(false);
+  // 통신이 끊긴 채 새로고침해도 마지막 작전도는 보이게 (이 기기에 저장해 둔 것)
+  const cached = useMemo(() => loadMapCache(code)?.value ?? null, [code]);
+  const [map, setMap] = useState<MapDoc>(cached ?? EMPTY_MAP);
+  const [loaded, setLoaded] = useState(!!cached);
   const [mode, setMode] = useState<Mode>({ kind: 'select' });
   const [selId, setSelId] = useState<string | null>(null);
   const [bgDim, setBgDim] = useState(0.85);
@@ -48,20 +66,54 @@ export function MapView() {
   const svgRef = useRef<SVGSVGElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const isOwner = access === 'owner';
+  const legacyRef = useRef<LegacyMap | null>(null);
+  const [legacyTick, setLegacyTick] = useState(0);
   useEffect(
     () =>
       subscribeMap(
         code,
-        (m) => {
+        (m, legacy) => {
           remoteBase.current = m;
           setLoaded(true);
           // 끄는 중에는 내 화면 위치를 유지 (놓으면 저장되고 다시 맞춰진다)
           if (!drag.current) setMap(m);
+          if (hasLegacy(legacy)) {
+            legacyRef.current = legacy;
+            setLegacyTick((n) => n + 1);
+          }
         },
-        (e) => toast(`작전도 불러오기 실패: ${e.message}`, 'error'),
+        (e) => {
+          // 같은 알림이 탭을 오갈 때마다 반복해서 뜨지 않게 한 번만
+          const key = `${code}:${(e as { code?: string }).code ?? e.message}`;
+          if (warnedMapErrors.has(key)) return;
+          warnedMapErrors.add(key);
+          toast(`작전도 불러오기 실패: ${e.message}`, 'error');
+        },
       ),
     [code, toast],
   );
+  useEffect(() => {
+    const t = setTimeout(() => saveMapCache(code, remoteBase.current), 1500);
+    return () => clearTimeout(t);
+  }, [code, map]);
+
+  // 예전 방식으로 저장된 작전도는 관리자가 열면 새 방식(표시물 하나씩 저장)으로 옮긴다
+  // 실패하면(예: 서버 규칙이 아직 예전 버전) 이번 접속 동안은 다시 시도하지 않는다 — 작전도가 바뀔 때마다 실패 알림이 반복되지 않게
+  const migrating = useRef(false);
+  useEffect(() => {
+    const legacy = legacyRef.current;
+    if (!legacy || !isOwner || !canEdit || migrating.current || migrationFailed.has(code)) return;
+    migrating.current = true;
+    migrateLegacyMap(code, legacy)
+      .then(() => { legacyRef.current = null; })
+      .catch((e: Error & { code?: string }) => {
+        migrationFailed.add(code);
+        // 규칙이 예전 버전이라 못 옮긴 경우는 작전도는 예전 방식대로 잘 보이므로 조용히 넘어간다
+        if (e.code !== 'permission-denied') toast(`예전 작전도 옮기기 실패: ${e.message}`, 'error');
+      })
+      .finally(() => { migrating.current = false; });
+  }, [legacyTick, isOwner, canEdit, code, toast]);
 
   const H = map.bg ? Math.round((W * map.bgH) / map.bgW) : 1000;
   const vw = W / cam.z;
@@ -86,34 +138,18 @@ export function MapView() {
     [code, toast],
   );
 
-  const setItems = (items: MapItem[], save = true) => {
-    setMap((m) => ({ ...m, items }));
-    if (save) persist({ items });
-  };
-
-  // ── 표시물·선 고치기: 본인이 놓은 것만, 관리자는 전부 (저장 순간의 최신 작전도 위에 적용) ──
-  const isOwner = access === 'owner';
+  // ── 표시물·선 고치기: 본인이 놓은 것만, 관리자는 전부 (서버 규칙으로도 막음) ──
   const [myUid, setMyUid] = useState('');
   useEffect(() => { void deviceUid().then(setMyUid); }, []);
   const mayTouch = (x: { by?: string }) => canTouch(x, myUid, isOwner);
-  const editPlan = (fn: Parameters<typeof updatePlan>[1], text: string) => {
-    if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return; }
-    updatePlan(code, fn, text).catch((e: Error) => {
-      setMap(remoteBase.current);
-      toast(`작전도 저장 실패: ${e.message}`, 'error');
-    });
+  const fail = (e: Error & { code?: string }) => {
+    setMap(remoteBase.current);
+    toast(e.code === 'permission-denied' ? '다른 사람이 놓은 것은 관리자만 고치거나 지울 수 있습니다.' : `작전도 저장 실패: ${e.message}`, 'error');
   };
-  const denied = () => new MapEditDenied('다른 사람이 놓은 표시물은 관리자만 고치거나 지울 수 있습니다.');
-  const changeOne = <K extends 'items' | 'lines'>(key: K, id: string, change: ((x: MapDoc[K][number]) => void) | null, text: string) => {
-    const who = { uid: myUid, isOwner };
-    editPlan((m) => {
-      const list = m[key] as { id: string; by?: string }[];
-      const x = list.find((i) => i.id === id);
-      if (!x) return null;
-      if (!canTouch(x, who.uid, who.isOwner)) throw denied();
-      if (change) change(x as MapDoc[K][number]);
-      return { [key]: change ? list : list.filter((i) => i.id !== id) };
-    }, text);
+  const okToEdit = (x?: { by?: string }) => {
+    if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return false; }
+    if (x && !mayTouch(x)) { toast('다른 사람이 놓은 것은 관리자만 고치거나 지울 수 있습니다.', 'error'); return false; }
+    return true;
   };
   const itemName = (it: MapItem) => it.label || MAP_TYPES[it.type]?.label || it.type;
 
@@ -142,8 +178,9 @@ export function MapView() {
         ...(mode.type === 'text' ? { label: '메모' } : {}),
         by: myUid,
       };
+      if (!okToEdit()) return;
       setMap((m) => ({ ...m, items: [...m.items, it] }));
-      editPlan((m) => ({ items: [...m.items, it] }), `표시물 추가: ${itemName(it)}`);
+      addMapObject(code, 'plan', 'item', it, `표시물 추가: ${itemName(it)}`).catch(fail);
       setSelId(it.id);
       setMode({ kind: 'select' });
       return;
@@ -220,16 +257,16 @@ export function MapView() {
     if (!d || d.kind === 'pan') return;
     if (d.kind === 'draw') {
       setDraft(null);
-      if (d.line.points.length >= 4) {
+      if (d.line.points.length >= 4 && okToEdit()) {
         const line = d.line;
         setMap((m) => ({ ...m, lines: [...m.lines, line] }));
-        editPlan((m) => ({ lines: [...m.lines, line] }), `${line.kind === 'hose' ? '수관' : '진입경로'} 그리기`);
+        addMapObject(code, 'plan', 'line', line, `${line.kind === 'hose' ? '수관' : '진입경로'} 그리기`).catch(fail);
       }
     } else if (d.kind === 'resize' || d.moved) {
       const it = mapRef.current.items.find((x) => x.id === d.id);
       if (it) {
         const patch = d.kind === 'resize' ? { w: it.w, h: it.h } : { x: it.x, y: it.y };
-        changeOne('items', d.id, (x) => Object.assign(x, patch), `표시물 ${d.kind === 'resize' ? '크기 변경' : '이동'}: ${itemName(it)}`);
+        updateMapObject(code, d.id, patch, `표시물 ${d.kind === 'resize' ? '크기 변경' : '이동'}: ${itemName(it)}`).catch(fail);
       }
     }
   };
@@ -241,46 +278,58 @@ export function MapView() {
 
   const removeSelected = () => {
     if (sel) {
+      if (!okToEdit(sel)) return;
       setMap((m) => ({ ...m, items: m.items.filter((x) => x.id !== sel.id) }));
-      changeOne('items', sel.id, null, `표시물 삭제: ${itemName(sel)}`);
+      removeMapObject(code, sel.id, `표시물 삭제: ${itemName(sel)}`).catch(fail);
     } else if (selLine) {
+      if (!okToEdit(selLine)) return;
       setMap((m) => ({ ...m, lines: m.lines.filter((x) => x.id !== selLine.id) }));
-      changeOne('lines', selLine.id, null, `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
+      removeMapObject(code, selLine.id, `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`).catch(fail);
     }
     setSelId(null);
   };
 
   const patchSel = (patch: Partial<MapItem>) => {
-    if (!sel) return;
+    if (!sel || !okToEdit(sel)) return;
     setMap((m) => ({ ...m, items: m.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)) }));
-    changeOne('items', sel.id, (x) => Object.assign(x, patch), `표시물 수정: ${itemName(sel)}`);
+    updateMapObject(code, sel.id, patch, `표시물 수정: ${itemName(sel)}`).catch(fail);
   };
 
   const uploadBg = async (f: File) => {
-    if (!canEdit) return;
+    if (!okToEdit()) return;
     setBusy(true);
     try {
       const { url, w, h } = await compressImage(f);
-      // 배경 비율이 바뀌면 기존 표시물 위치를 새 높이에 맞춰 늘린다
+      // 배경 비율이 바뀌면 기존 표시물 위치를 새 높이에 맞춰 늘린다 (내가 고칠 수 있는 것만)
       const newH = Math.round((W * h) / w);
       const ratio = newH / H;
-      const items = map.items.map((it) => ({ ...it, y: Math.round(it.y * ratio) }));
-      const lines = map.lines.map((l) => ({ ...l, points: l.points.map((v, i) => (i % 2 ? Math.round(v * ratio) : v)) }));
-      setMap({ ...map, bg: url, bgW: w, bgH: h, items, lines });
-      await saveMap(code, { bg: url, bgW: w, bgH: h, items, lines }, map);
-
+      const items = map.items.filter((it) => mayTouch(it)).map((it) => ({ ...it, y: Math.round(it.y * ratio) }));
+      const lines = map.lines.filter((l) => mayTouch(l)).map((l) => ({ ...l, points: l.points.map((v, i) => (i % 2 ? Math.round(v * ratio) : v)) }));
+      await saveMapBg(code, url, w, h);
+      if (ratio !== 1) {
+        await saveMapObjects(code, 'plan', 'item', items, [], '도면 크기에 맞춰 표시물 위치 조정');
+        await saveMapObjects(code, 'plan', 'line', lines, [], '도면 크기에 맞춰 선 위치 조정');
+        if (items.length < map.items.length || lines.length < map.lines.length)
+          toast('다른 사람이 놓은 표시물은 위치를 그대로 두었습니다. 필요하면 관리자가 옮겨 주세요.');
+      }
     } catch (e) {
       setMap(remoteBase.current);
-      toast(`배경 등록 실패: ${(e as Error).message}`, 'error');
+      toast(`도면 등록 실패: ${(e as Error).message}`, 'error');
     } finally {
       setBusy(false);
     }
   };
 
+  // 자동 배치는 다른 사람의 표시물도 옮기므로 관리자만
   const runAuto = () => {
+    if (!isOwner || !okToEdit()) return;
+    const before = new Map(map.items.map((x) => [x.id, x]));
     const { items, summary } = autoLayout(map.items, data, H);
-    setItems(items);
-
+    const changed = items
+      .filter((x) => JSON.stringify(before.get(x.id)) !== JSON.stringify(x))
+      .map((x) => ({ ...x, by: before.has(x.id) ? x.by ?? null : myUid }));
+    setMap((m) => ({ ...m, items }));
+    saveMapObjects(code, 'plan', 'item', changed, [], `자동 배치: ${summary}`).catch(fail);
     toast(`자동 배치: ${summary}`);
   };
 
@@ -378,8 +427,9 @@ export function MapView() {
             <button
               className="btn small ghost"
               onClick={() => {
+                if (!okToEdit()) return;
                 setMap({ ...map, bg: null });
-                persist({ bg: null });
+                saveMapBg(code, null, map.bgW, map.bgH).catch(fail);
 
               }}
             >

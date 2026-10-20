@@ -4,11 +4,27 @@ import { auth, googleLogin, logout } from '../firebase';
 import { useToast } from '../session-context';
 import { hasUnsavedChanges } from '../lib/save-status';
 
+/**
+ * 지금 Google 로 로그인되어 있으면 그 이메일, 아니면 ''. 확인 전에는 null.
+ * (익명 기기에 Google 을 연결한 경우도 로그인으로 본다 — 서버 규칙과 같은 기준)
+ */
+export function useGoogleEmail(): string | null {
+  const [email, setEmail] = useState<string | null>(null);
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, (user) => {
+        const google = user?.providerData.find((p) => p.providerId === 'google.com');
+        setEmail(google ? google.email ?? user?.email ?? 'Google 계정' : '');
+      }),
+    [],
+  );
+  return email;
+}
+
 /** 현장 관리자용 Google 로그인. 일반 참여자는 쓰지 않아도 된다. */
-export function GoogleLoginButton({ className = 'btn small on-soft' }: { className?: string }) {
+export function GoogleLoginButton({ className = 'btn small on-soft', label = '관리자 로그인 (Google)' }: { className?: string; label?: string }) {
   const [busy, setBusy] = useState(false);
-  const [email, setEmail] = useState('');
-  useEffect(() => onAuthStateChanged(auth, (user) => setEmail(user?.isAnonymous ? '' : user?.email ?? '')), []);
+  const email = useGoogleEmail();
   const toast = useToast();
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -36,7 +52,7 @@ export function GoogleLoginButton({ className = 'btn small on-soft' }: { classNa
     );
   return (
     <button className={className} disabled={busy} onClick={() => void run(googleLogin)}>
-      {busy ? 'Google 로그인 중…' : '관리자 로그인 (Google)'}
+      {busy ? 'Google 로그인 중…' : label}
     </button>
   );
 }

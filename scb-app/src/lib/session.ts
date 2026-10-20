@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, deviceUid } from '../firebase';
 import { mergeEdits } from './merge';
+import { diffChanges, type Change } from './undo';
 import { trackedSave } from './save-status';
 import { joinSession } from './access';
 import type {
@@ -27,6 +28,10 @@ import type {
   GeoState,
   LogItem,
   MapDoc,
+  MapItem,
+  MapLine,
+  GeoItem,
+  GeoLine,
   SessionData,
   Team,
   Unit,
@@ -145,6 +150,7 @@ export function parseSession(raw: Record<string, unknown>): SessionData {
     ownerId: str(raw.ownerId),
     closed: raw.closed === true,
     title: str(raw.title),
+    createdAt: raw.createdAt instanceof Timestamp ? raw.createdAt.toMillis() : num(raw.createdAt),
     buildings,
     states,
     personnelStats,
@@ -217,25 +223,31 @@ const MUTABLE_KEYS: (keyof Mutable)[] = ['title', 'buildings', 'states', 'person
  * 여러 사람이 동시에 고쳐도 서로 덮어쓰지 않도록 트랜잭션으로
  * "최신 문서를 읽고 → 바꾸고 → 바뀐 칸만 저장" 한다.
  */
-export async function mutateSession(code: string, fn: (d: SessionData) => void, audit?: { actor: Identity; category: LogCategory; text: string; at: number }) {
+/** 돌려주는 값: 실제로 바뀐 곳 목록 (되돌리기용). 바뀐 게 없으면 빈 목록 */
+export async function mutateSession(code: string, fn: (d: SessionData) => void, audit?: { actor: Identity; category: LogCategory; text: string; at: number }): Promise<Change[]> {
   const actorUid = await deviceUid();
-  await runTransaction(db, async (tx) => {
+  return runTransaction(db, async (tx) => {
     const snap = await tx.get(sessionRef(code));
     if (!snap.exists()) throw new Error('세션이 없습니다');
     const before = parseSession(snap.data());
     const after = structuredClone(before);
     fn(after);
     const patch: Record<string, unknown> = {};
+    const changes: Change[] = [];
     for (const k of MUTABLE_KEYS) {
-      if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) patch[k] = after[k];
+      if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) {
+        patch[k] = after[k];
+        diffChanges(before[k], after[k], [k], changes);
+      }
     }
-    if (Object.keys(patch).length === 0) return;
+    if (Object.keys(patch).length === 0) return changes;
     patch.updatedAt = serverTimestamp();
     tx.update(sessionRef(code), patch as Record<string, never>);
     if (audit) tx.set(doc(collection(db, 'sessions', code, 'logs')), {
       at: serverTimestamp(), atMs: audit.at, actor: audit.actor, actorUid,
       category: audit.category, text: audit.text.slice(0, 500),
     });
+    return changes;
   });
 }
 
@@ -322,38 +334,112 @@ export async function sendChat(code: string, me: Identity, text: string) {
 // ── 진압작전도 (sessions/{code}/secondary/map) ───────────────────────
 export const EMPTY_MAP: MapDoc = { mode: 'map', geo: null, bg: null, bgW: 1600, bgH: 1000, items: [], lines: [] };
 
-export function subscribeMap(code: string, cb: (m: MapDoc) => void, onError: (e: Error) => void) {
-  return onSnapshot(
-    doc(db, 'sessions', code, 'secondary', 'map'),
-    { includeMetadataChanges: true },
-    (snap) => {
-      if (snap.metadata.hasPendingWrites) return;
-      if (!snap.exists()) return cb(EMPTY_MAP);
-      const m = snap.data();
-      const g = m.geo ? obj(m.geo) : null;
-      cb({
-        mode: m.mode === 'plan' ? 'plan' : 'map',
-        geo: g
+/**
+ * 작전도는 세 곳에 나눠 저장한다.
+ *  · secondary/map    — 모드·지도 위치·고정·도면 크기 (작고 가벼움)
+ *  · secondary/mapBg  — 도면 사진 (무거움, 바꿀 때만 저장)
+ *  · mapObjects/{id}  — 표시물·선 하나하나 (놓은 사람 by — 본인과 관리자만 고치고 지울 수 있게 서버 규칙으로 막음)
+ * 예전 현장은 표시물·사진이 secondary/map 안에 들어 있으므로 함께 읽고, 관리자가 열면 옮긴다(migrateLegacyMap).
+ */
+export interface LegacyMap {
+  planItems: MapItem[];
+  planLines: MapLine[];
+  geoItems: GeoItem[];
+  geoLines: GeoLine[];
+  bg: string | null;
+}
+export const hasLegacy = (l: LegacyMap) => !!(l.planItems.length || l.planLines.length || l.geoItems.length || l.geoLines.length || l.bg);
+
+type MapObjectDoc = Record<string, unknown> & { space: 'geo' | 'plan'; kind: 'item' | 'line'; by?: string | null };
+
+function parseMapDoc(m: Record<string, unknown>): MapDoc {
+  const g = m.geo ? obj(m.geo) : null;
+  return {
+    mode: m.mode === 'plan' ? 'plan' : 'map',
+    geo: g
+      ? {
+          lat: num(g.lat, 37.5665),
+          lng: num(g.lng, 126.978),
+          zoom: num(g.zoom, 18),
+          layer: g.layer === 'Base' ? 'Base' : 'Satellite',
+          locked: g.locked === true,
+          address: str(g.address),
+          items: arr(g.items) as GeoState['items'],
+          lines: arr(g.lines) as GeoState['lines'],
+        }
+      : null,
+    bg: typeof m.bg === 'string' ? m.bg : null,
+    bgW: num(m.bgW, 1600),
+    bgH: num(m.bgH, 1000),
+    items: arr(m.items) as MapDoc['items'],
+    lines: arr(m.lines) as MapDoc['lines'],
+  };
+}
+
+/** 세 곳을 모두 지켜보다가 합친 작전도를 넘겨준다 */
+export function subscribeMap(code: string, cb: (m: MapDoc, legacy: LegacyMap) => void, onError: (e: Error) => void) {
+  let base: MapDoc | null = null;
+  let bg: string | null | undefined; // undefined = mapBg 문서 없음 (예전 현장)
+  let objects: { id: string; d: MapObjectDoc }[] = [];
+  const emit = () => {
+    if (!base) return;
+    const ids = new Set(objects.map((o) => o.id));
+    const pick = (space: string, kind: string) =>
+      objects
+        .filter((o) => o.d.space === space && o.d.kind === kind)
+        .map((o) => {
+          const { space: _s, kind: _k, updatedAt: _u, ...rest } = o.d;
+          return { ...rest, id: o.id, by: typeof rest.by === 'string' ? rest.by : undefined };
+        });
+    // 아직 옮기지 않은 예전 표시물. 화면에서는 놓은 사람 기록을 지워서 관리자만 다루게 한다(옮기기 전까지)
+    const legacyOf = <T extends { id: string }>(list: T[]) => list.filter((x) => !ids.has(safeObjId(x.id)));
+    const strip = <T extends { by?: string }>(list: T[]) => list.map((x) => ({ ...x, by: undefined }));
+    const legacy: LegacyMap = {
+      planItems: legacyOf(base.items),
+      planLines: legacyOf(base.lines),
+      geoItems: legacyOf(base.geo?.items ?? []),
+      geoLines: legacyOf(base.geo?.lines ?? []),
+      bg: base.bg,
+    };
+    cb(
+      {
+        ...base,
+        bg: bg !== undefined ? bg : base.bg,
+        items: [...strip(legacy.planItems), ...(pick('plan', 'item') as MapItem[])],
+        lines: [...strip(legacy.planLines), ...(pick('plan', 'line') as MapLine[])],
+        geo: base.geo
           ? {
-              lat: num(g.lat, 37.5665),
-              lng: num(g.lng, 126.978),
-              zoom: num(g.zoom, 18),
-              layer: g.layer === 'Base' ? 'Base' : 'Satellite',
-              locked: g.locked === true,
-              address: str(g.address),
-              items: arr(g.items) as GeoState['items'],
-              lines: arr(g.lines) as GeoState['lines'],
+              ...base.geo,
+              items: [...strip(legacy.geoItems), ...(pick('geo', 'item') as GeoItem[])],
+              lines: [...strip(legacy.geoLines), ...(pick('geo', 'line') as GeoLine[])],
             }
           : null,
-        bg: typeof m.bg === 'string' ? m.bg : null,
-        bgW: num(m.bgW, 1600),
-        bgH: num(m.bgH, 1000),
-        items: arr(m.items) as MapDoc['items'],
-        lines: arr(m.lines) as MapDoc['lines'],
-      });
-    },
-    onError,
-  );
+      },
+      legacy,
+    );
+  };
+  const u1 = onSnapshot(doc(db, 'sessions', code, 'secondary', 'map'), { includeMetadataChanges: true }, (snap) => {
+    if (snap.metadata.hasPendingWrites) return;
+    base = snap.exists() ? parseMapDoc(snap.data()) : EMPTY_MAP;
+    emit();
+  }, onError);
+  // 서버 규칙이 아직 예전 버전이면 새 저장 위치(mapBg·mapObjects)를 못 읽는다.
+  // 그때는 예전 방식 작전도만 보여 주고, 알림은 한 번만 한다 (작전도 자체는 계속 보이게)
+  const partial = (e: Error & { code?: string }) => {
+    if (e.code !== 'permission-denied') return onError(e);
+    emit();
+    onError(Object.assign(new Error('서버 보안 규칙이 아직 새 버전이 아닙니다. 예전 표시물만 보이며, 새 표시물 저장은 규칙을 배포해야 됩니다.'), { code: 'rules-outdated' }));
+  };
+  const u2 = onSnapshot(doc(db, 'sessions', code, 'secondary', 'mapBg'), (snap) => {
+    bg = snap.exists() ? (typeof snap.data().bg === 'string' ? snap.data().bg : null) : undefined;
+    emit();
+  }, partial);
+  // 표시물은 내가 놓은 것이 저장되기 전에도 바로 보이게(낙관적) 한다. 거절되면 저절로 되돌아간다
+  const u3 = onSnapshot(collection(db, 'sessions', code, 'mapObjects'), (snap) => {
+    objects = snap.docs.map((d) => ({ id: d.id, d: d.data() as MapObjectDoc }));
+    emit();
+  }, partial);
+  return () => { u1(); u2(); u3(); };
 }
 
 /** 표시물 주인이 아니어서 고칠 수 없음 — 다시 시도해도 같으므로 "미저장"으로 남기지 않는다 */
@@ -361,60 +447,116 @@ export class MapEditDenied extends Error {
   code = 'permission-denied';
 }
 
-/**
- * 지도 표시물·선 고치기 — 저장하는 순간의 최신 작전도를 읽어서 그 위에 바꾼다.
- * 내 화면의 옛 작전도를 기준으로 합치지 않으므로, 여러 기기가 동시에 놓고·옮기고·지워도
- * "같은 항목을 수정했습니다" 충돌이 나지 않는다.
- * fn 이 null 을 돌려주면(바뀔 게 없으면) 저장하지 않는다.
- */
-export function updateGeo(
-  code: string,
-  fn: (geo: GeoState) => Partial<Pick<GeoState, 'items' | 'lines'>> | null,
-  logText: string,
-  opts: { track?: boolean } = {},
-) {
-  return editMapLists(code, 'geo', fn as unknown as (m: Record<string, unknown>) => Record<string, unknown[]> | null, logText, opts);
-}
+/** Firestore 문서 이름에 쓸 수 없는 '/' 를 바꾼다 */
+export const safeObjId = (id: string) => (id.replace(/\//g, '∕').slice(0, 300) || 'x');
+const objRef = (code: string, id: string) => doc(db, 'sessions', code, 'mapObjects', safeObjId(id));
+const cleanObj = (o: object) => JSON.parse(JSON.stringify(o)) as Record<string, unknown>;
 
-/** 도면 모드 표시물·선 — updateGeo 와 같은 방식 */
-export function updatePlan(
-  code: string,
-  fn: (m: Pick<MapDoc, 'items' | 'lines'>) => Partial<Pick<MapDoc, 'items' | 'lines'>> | null,
-  logText: string,
-) {
-  return editMapLists(code, 'plan', fn as unknown as (m: Record<string, unknown>) => Record<string, unknown[]> | null, logText, {});
-}
-
-async function editMapLists(
-  code: string,
-  where: 'geo' | 'plan',
-  fn: (m: Record<string, unknown>) => Record<string, unknown[]> | null,
-  logText: string,
-  opts: { track?: boolean },
-) {
+async function commitWithLog(code: string, text: string, fill: (b: ReturnType<typeof writeBatch>) => void, track = true) {
   const actorUid = await deviceUid();
   const actor = loadIdentity() ?? { agency: '', dept: '', role: '' };
-  const run = () => runTransaction(db, async (tx) => {
-    const ref = doc(db, 'sessions', code, 'secondary', 'map');
-    const snap = await tx.get(ref);
-    const raw = snap.exists() ? snap.data() : {};
-    const g = where === 'geo' ? obj(raw.geo) : { ...EMPTY_MAP, ...raw };
-    if (where === 'geo' && !Array.isArray(g.items)) throw new MapEditDenied('작전도 지도가 아직 준비되지 않았습니다. 잠시 후 다시 해 주세요.');
-    const out = fn({ ...g, items: structuredClone(arr(g.items)), lines: structuredClone(arr(g.lines)) });
-    if (!out) return false;
-    const prefix = where === 'geo' ? 'geo.' : '';
-    const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
-    if (out.items) patch[`${prefix}items`] = JSON.parse(JSON.stringify(out.items));
-    if (out.lines) patch[`${prefix}lines`] = JSON.parse(JSON.stringify(out.lines));
-    if (snap.exists()) tx.update(ref, patch as Record<string, never>);
-    else tx.set(ref, { ...EMPTY_MAP, ...patch });
-    tx.set(doc(collection(db, 'sessions', code, 'logs')), {
-      at: serverTimestamp(), atMs: Date.now(), actor, actorUid,
-      category: '작전도', text: logText.slice(0, 500),
+  const run = async () => {
+    const b = writeBatch(db);
+    fill(b);
+    b.set(doc(collection(db, 'sessions', code, 'logs')), {
+      at: serverTimestamp(), atMs: Date.now(), actor, actorUid, category: '작전도', text: text.slice(0, 500),
     });
-    return true;
+    await b.commit();
+  };
+  return track ? trackedSave(run) : run();
+}
+
+/** 표시물·선 하나 놓기 (놓은 사람 = 이 기기) */
+export async function addMapObject(code: string, space: 'geo' | 'plan', kind: 'item' | 'line', o: { id: string } & object, text: string) {
+  const by = await deviceUid();
+  const { id, ...rest } = cleanObj(o) as { id: string } & Record<string, unknown>;
+  return commitWithLog(code, text, (b) => b.set(objRef(code, id), { ...rest, space, kind, by, updatedAt: serverTimestamp() }));
+}
+
+/** 표시물·선 하나 고치기 — 남의 것이면 서버가 거절한다 */
+export function updateMapObject(code: string, id: string, patch: object, text: string) {
+  const { id: _id, by: _by, ...rest } = cleanObj(patch) as Record<string, unknown>;
+  return commitWithLog(code, text, (b) => b.update(objRef(code, id), { ...rest, updatedAt: serverTimestamp() }));
+}
+
+export function removeMapObject(code: string, id: string, text: string) {
+  return commitWithLog(code, text, (b) => b.delete(objRef(code, id)));
+}
+
+/**
+ * 여러 개를 한 번에 놓거나 지운다 (현황판 따라가기·자동 배치·도면 바꿀 때 위치 맞추기).
+ * upserts 의 by 는 부르는 쪽이 정한다 (저절로 생긴 표시물은 null).
+ */
+export function saveMapObjects(
+  code: string,
+  space: 'geo' | 'plan',
+  kind: 'item' | 'line',
+  upserts: ({ id: string; by?: string | null } & object)[],
+  removes: string[],
+  text: string,
+  opts: { track?: boolean } = {},
+) {
+  if (!upserts.length && !removes.length) return Promise.resolve();
+  return commitWithLog(
+    code,
+    text,
+    (b) => {
+      for (const o of upserts) {
+        const { id, ...rest } = cleanObj(o) as { id: string } & Record<string, unknown>;
+        b.set(objRef(code, id), { ...rest, by: typeof o.by === 'string' ? o.by : null, space, kind, updatedAt: serverTimestamp() });
+      }
+      for (const id of removes) b.delete(objRef(code, id));
+    },
+    opts.track !== false,
+  );
+}
+
+/** 도면 사진 저장·지우기 (무거운 사진은 따로 저장) */
+export async function saveMapBg(code: string, bg: string | null, bgW: number, bgH: number) {
+  const actorUid = await deviceUid();
+  const actor = loadIdentity() ?? { agency: '', dept: '', role: '' };
+  return trackedSave(async () => {
+    const mapRef = doc(db, 'sessions', code, 'secondary', 'map');
+    const exists = (await getDoc(mapRef)).exists();
+    const b = writeBatch(db);
+    b.set(doc(db, 'sessions', code, 'secondary', 'mapBg'), { bg, updatedAt: serverTimestamp() });
+    if (exists) b.update(mapRef, { bg: null, bgW, bgH, updatedAt: serverTimestamp() });
+    else b.set(mapRef, { ...EMPTY_MAP, bgW, bgH, updatedAt: serverTimestamp() });
+    b.set(doc(collection(db, 'sessions', code, 'logs')), {
+      at: serverTimestamp(), atMs: Date.now(), actor, actorUid, category: '작전도', text: bg ? '도면 사진 올림' : '도면 사진 지움',
+    });
+    await b.commit();
   });
-  return opts.track === false ? run() : trackedSave(run);
+}
+
+/**
+ * 예전 방식(문서 하나에 다 들어 있던) 작전도를 새 방식으로 옮긴다. 관리자만 할 수 있다.
+ * 놓은 사람 기록이 있으면 그대로 옮기고, 없으면 관리자만 다룰 수 있는 표시물이 된다.
+ */
+export async function migrateLegacyMap(code: string, raw: LegacyMap) {
+  const all: { space: 'geo' | 'plan'; kind: 'item' | 'line'; o: { id: string } & Record<string, unknown> }[] = [
+    ...raw.planItems.map((o) => ({ space: 'plan' as const, kind: 'item' as const, o: o as unknown as { id: string } & Record<string, unknown> })),
+    ...raw.planLines.map((o) => ({ space: 'plan' as const, kind: 'line' as const, o: o as unknown as { id: string } & Record<string, unknown> })),
+    ...raw.geoItems.map((o) => ({ space: 'geo' as const, kind: 'item' as const, o: o as unknown as { id: string } & Record<string, unknown> })),
+    ...raw.geoLines.map((o) => ({ space: 'geo' as const, kind: 'line' as const, o: o as unknown as { id: string } & Record<string, unknown> })),
+  ];
+  for (let i = 0; i < all.length; i += 400) {
+    const b = writeBatch(db);
+    for (const { space, kind, o } of all.slice(i, i + 400)) {
+      const { id, by, ...rest } = cleanObj(o) as { id: string } & Record<string, unknown>;
+      b.set(objRef(code, id), { ...rest, space, kind, by: typeof by === 'string' ? by : null, updatedAt: serverTimestamp() });
+    }
+    await b.commit();
+  }
+  const mapRef = doc(db, 'sessions', code, 'secondary', 'map');
+  const snap = await getDoc(mapRef);
+  const b = writeBatch(db);
+  if (raw.bg) b.set(doc(db, 'sessions', code, 'secondary', 'mapBg'), { bg: raw.bg, updatedAt: serverTimestamp() });
+  b.update(mapRef, {
+    items: [], lines: [], bg: null, updatedAt: serverTimestamp(),
+    ...(snap.data()?.geo ? { 'geo.items': [], 'geo.lines': [] } : {}),
+  });
+  await b.commit();
 }
 
 export async function saveMap(code: string, patch: Partial<MapDoc>, base: MapDoc) {

@@ -1,7 +1,23 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const load = require('./load-ts.cjs')();
-const { createBuildingState, resizeBuilding, floorKey } = load('src/lib/building.ts');
+const { createBuildingState, resizeBuilding, floorKey, bulkStatusRisks } = load('src/lib/building.ts');
+
+test('bulk status change warns about fire origin, fire floors and vulnerable units', () => {
+  const b = { name: '101동', startFloor: 1, endFloor: 5, defaultUnits: 2, isHorizontal: false };
+  const d = session(b);
+  d.fireOrigin = { buildingIdx: 0, unitId: '4-1', floor: 4, note: '', by: '', at: 0 };
+  unitAt(d, 4, 1).status = 'danger';
+  unitAt(d, 2, 2).vulnerable = true;
+  const units = d.states[0].units.filter((u) => u.floor <= 4);
+  const risks = bulkStatusRisks(d, 0, units, 'confirmed');
+  assert.equal(risks.length, 3);
+  assert.match(risks[0], /401호.*화점/);
+  assert.match(risks[1], /화재층.*1칸.*401호/);
+  assert.match(risks[2], /피난약자 1칸.*202호/);
+  // 전부 미확인인 층을 확인완료로 → 경고 없음
+  assert.deepEqual(bulkStatusRisks(d, 0, d.states[0].units.filter((u) => u.floor === 1), 'confirmed'), []);
+});
 
 function session(b) {
   return {

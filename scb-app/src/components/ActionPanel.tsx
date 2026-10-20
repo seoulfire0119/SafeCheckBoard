@@ -1,10 +1,11 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Pencil, SquareDashed, SquareSplitHorizontal, X } from 'lucide-react';
-import type { Building, BuildingState, Unit, UnitStatus } from '../types';
+import { ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Pencil, SquareDashed, SquareSplitHorizontal, TriangleAlert, X } from 'lucide-react';
+import { Modal } from './Modal';
+import type { Building, BuildingState, SessionData, Unit, UnitStatus } from '../types';
 import { STATUS_ICON } from './icons';
 import { WheelchairIcon } from './WheelchairIcon';
 import { useSession } from '../session-context';
-import { baseFloorLabel, baseUnitLabel, floorLabel, floorsDescending, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
+import { baseFloorLabel, baseUnitLabel, bulkStatusRisks, floorLabel, floorsDescending, STATUS, STATUS_ORDER, unitFullName } from '../lib/building';
 import { hhmm } from '../lib/format';
 import type { Selection } from './BuildingCard';
 
@@ -21,6 +22,7 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
   const [renaming, setRenaming] = useState(false);
   useEffect(() => setRenaming(false), [sel?.unitId, sel?.floor, sel?.b]);
   useEffect(() => setMemo(unit?.memo ?? ''), [unit?.id, unit?.memo]);
+  const floorGuard = useRiskGuard(sel?.b ?? 0);
 
   if (!sel || !b || !st || (!unit && !floorUnits && !multiUnits?.length)) {
     const recent = logs.slice(-12).reverse();
@@ -136,15 +138,22 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
         <div className="toggle-row">
           <button
             className={`btn ${isOrigin ? 'fire on' : 'fire'}`}
-            onClick={() =>
-              act(
-                (d) => {
-                  d.fireOrigin = isOrigin ? null : { buildingIdx: bi, unitId: unit.id, floor: unit.floor, note: '', by: `${me.dept} ${me.role}`, at: Date.now() };
-                },
-                '화점',
-                isOrigin ? `화점(추정) 해제: ${name}` : `화점(추정) 지정: ${name}`,
-              )
-            }
+            onClick={() => {
+              // 이미 다른 곳이 화점이면 옮기는 것이므로 한 번 묻는다
+              const prev = !isOrigin && fo ? fireOriginName(data, fo) : '';
+              floorGuard.ask(
+                `화점(추정)을 ${name}(으)로 옮길까요?`,
+                prev ? [`지금 화점(추정)은 ${prev}입니다. 바꾸면 그 표시는 지워집니다.`] : [],
+                () =>
+                  act(
+                    (d) => {
+                      d.fireOrigin = isOrigin ? null : { buildingIdx: bi, unitId: unit.id, floor: unit.floor, note: '', by: `${me.dept} ${me.role}`, at: Date.now() };
+                    },
+                    '화점',
+                    isOrigin ? `화점(추정) 해제: ${name}` : prev ? `화점(추정) 변경: ${prev} → ${name}` : `화점(추정) 지정: ${name}`,
+                  ),
+              );
+            }}
           >
             <Flame size={18} /> {isOrigin ? '화점 해제' : '화점(추정) 지정'}
           </button>
@@ -254,20 +263,29 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
           <button
             className="btn small"
             onClick={() => {
-              onClear();
-              act(
-                (d) => {
-                  d.states[bi].units = d.states[bi].units.filter((x) => x.id !== unit.id);
-                  if (d.fireOrigin?.buildingIdx === bi && d.fireOrigin.unitId === unit.id) d.fireOrigin = null;
-                },
-                '건물',
-                `${name} 빈 칸으로 만들기`,
-              );
+              const lose = [
+                isOrigin && '화점(추정) 표시',
+                unit.status !== 'unknown' && `「${STATUS[unit.status].label}」 상태`,
+                unit.memo && `메모 "${unit.memo.slice(0, 30)}"`,
+                unit.vulnerable && '피난약자 표시',
+              ].filter(Boolean) as string[];
+              floorGuard.ask(`${name}을(를) 빈 칸으로 만들까요?`, lose.length ? [`이 칸의 ${lose.join(', ')}이(가) 함께 지워집니다.`] : [], () => {
+                onClear();
+                act(
+                  (d) => {
+                    d.states[bi].units = d.states[bi].units.filter((x) => x.id !== unit.id);
+                    if (d.fireOrigin?.buildingIdx === bi && d.fireOrigin.unitId === unit.id) d.fireOrigin = null;
+                  },
+                  '건물',
+                  `${name} 빈 칸으로 만들기`,
+                );
+              });
             }}
           >
             <SquareDashed size={16} /> 빈 칸으로
           </button>
         </div>
+        {floorGuard.dialog}
       </div>
     );
   }
@@ -335,12 +353,15 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
             onClick={() => {
               const n = floorUnits!.filter((u) => u.status !== s).length;
               if (n === 0) return;
-              act(
-                (d) => {
-                  for (const u of d.states[bi].units) if (u.floor === f) u.status = s;
-                },
-                '상태',
-                `${b.name} ${fl} 전체 ${n}칸 → ${STATUS[s].label}`,
+              const text = `${b.name} ${fl} 전체 ${n}칸 → ${STATUS[s].label}`;
+              floorGuard.guard(floorUnits!, s, text, () =>
+                act(
+                  (d) => {
+                    for (const u of d.states[bi].units) if (u.floor === f) u.status = s;
+                  },
+                  '상태',
+                  text,
+                ),
               );
             }}
           >
@@ -383,21 +404,95 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
         <button
           className="btn small"
           onClick={() => {
-            onClear();
-            act(
-              (d) => {
-                if (!d.states[bi].hiddenFloors.includes(f)) d.states[bi].hiddenFloors.push(f);
-              },
-              '건물',
-              `${b.name} ${fl} 숨기기`,
-            );
+            // 숨기면 큰 화면에서 안 보이게 되므로 중요한 것이 있는 층은 한 번 묻는다
+            const fireN = floorUnits!.filter((u) => u.status === 'danger' || u.status === 'fireFalseAlarm').length;
+            const vulnN = floorUnits!.filter((u) => u.vulnerable).length;
+            const teamsHere = data.teams.filter((t) => t.status !== 'waiting' && t.floorKey === `${bi}_${f}`);
+            const risks = [
+              (isFloorOrigin || floorUnits!.some((u) => fo?.buildingIdx === bi && fo.unitId === u.id)) && '이 층에 화점(추정)이 있습니다.',
+              fireN > 0 && `화재층·연소확대층 ${fireN}칸이 있습니다.`,
+              vulnN > 0 && `피난약자 ${vulnN}칸이 있습니다.`,
+              teamsHere.length > 0 && `진입 중인 대가 있습니다 (${teamsHere.map((t) => t.name).join(', ')}).`,
+            ].filter(Boolean) as string[];
+            floorGuard.ask(`${b.name} ${fl}을(를) 숨길까요?`, risks, () => {
+              onClear();
+              act(
+                (d) => {
+                  if (!d.states[bi].hiddenFloors.includes(f)) d.states[bi].hiddenFloors.push(f);
+                },
+                '건물',
+                `${b.name} ${fl} 숨기기`,
+              );
+            });
           }}
         >
           <EyeOff size={16} /> 이 층 숨기기
         </button>
       </details>
+      {floorGuard.dialog}
     </div>
   );
+}
+
+type PendingChange = { title: string; risks: string[]; run: () => void };
+
+/** 화점(추정) 위치 이름 — "101동 4F 401호" */
+function fireOriginName(d: SessionData, fo: NonNullable<SessionData['fireOrigin']>) {
+  const b = d.buildings[fo.buildingIdx];
+  const st = d.states[fo.buildingIdx];
+  if (!b || !st) return '다른 곳';
+  const u = fo.unitId ? st.units.find((x) => x.id === fo.unitId) : null;
+  return u ? unitFullName(b, st, u) : `${b.name} ${floorLabel(b, st, fo.floor)}`;
+}
+
+/**
+ * 여러 칸을 한꺼번에 바꿀 때 실수하기 쉬운 경우(화점·화재층·피난약자 등)를 먼저 묻는다.
+ * 걸리는 게 없으면 바로 바꾼다.
+ */
+function useRiskGuard(bi: number) {
+  const { data } = useSession();
+  const [pending, setPending] = useState<PendingChange | null>(null);
+  const guard = (units: Unit[], next: UnitStatus, title: string, run: () => void) => ask(title, bulkStatusRisks(data, bi, units, next), run);
+  /** 걸리는 게 있으면 묻고, 없으면 바로 한다 */
+  const ask = (title: string, risks: string[], run: () => void) => {
+    if (risks.length) setPending({ title, risks, run });
+    else run();
+  };
+  const dialog = pending && (
+    <Modal
+      title="한 번 더 확인해 주세요"
+      onClose={() => setPending(null)}
+      footer={
+        <>
+          <button className="btn ghost" onClick={() => setPending(null)}>
+            취소
+          </button>
+          <button
+            className="btn danger"
+            onClick={() => {
+              pending.run();
+              setPending(null);
+            }}
+          >
+            그래도 바꾸기
+          </button>
+        </>
+      }
+    >
+      <p>
+        <b>{pending.title}</b>
+      </p>
+      <ul className="risk-list">
+        {pending.risks.map((r) => (
+          <li key={r}>
+            <TriangleAlert size={16} /> {r}
+          </li>
+        ))}
+      </ul>
+      <p className="hint">계속하시겠습니까? 바꾼 뒤에도 화면 아래 「되돌리기」로 바로 원래대로 돌릴 수 있습니다.</p>
+    </Modal>
+  );
+  return { guard, ask, dialog };
 }
 
 function statusIcon(s: UnitStatus) {
@@ -421,6 +516,7 @@ function floorRangeText(b: Building, st: BuildingState, units: Unit[]) {
 /** 여러 칸을 한꺼번에 — 예) 1F~7F 전부 확인완료 */
 function MultiPanel({ bi, b, st, units, onClear }: { bi: number; b: Building; st: BuildingState; units: Unit[]; onClear: () => void }) {
   const { act } = useSession();
+  const { guard, dialog } = useRiskGuard(bi);
   const range = floorRangeText(b, st, units);
   const floors = new Set(units.map((u) => u.floor)).size;
   const counts = STATUS_ORDER.map((s) => [s, units.filter((u) => u.status === s).length] as const).filter(([, n]) => n > 0);
@@ -448,12 +544,15 @@ function MultiPanel({ bi, b, st, units, onClear }: { bi: number; b: Building; st
             onClick={() => {
               const n = units.filter((u) => u.status !== s).length;
               if (n === 0) return;
-              act(
-                (d) => {
-                  for (const u of d.states[bi].units) if (ids.has(u.id)) u.status = s;
-                },
-                '상태',
-                `${b.name} ${range} ${n}칸 → ${STATUS[s].label}`,
+              const text = `${b.name} ${range} ${n}칸 → ${STATUS[s].label}`;
+              guard(units, s, text, () =>
+                act(
+                  (d) => {
+                    for (const u of d.states[bi].units) if (ids.has(u.id)) u.status = s;
+                  },
+                  '상태',
+                  text,
+                ),
               );
             }}
           >
@@ -462,6 +561,7 @@ function MultiPanel({ bi, b, st, units, onClear }: { bi: number; b: Building; st
           </button>
         ))}
       </div>
+      {dialog}
     </div>
   );
 }

@@ -69,6 +69,7 @@ export interface SessionData {
   ownerId: string;
   closed: boolean;
   title: string;
+  createdAt: number; // 현장(세션)을 연 시각 ms — 0 이면 모름
   buildings: Building[];
   states: BuildingState[];
   personnelStats: PersonnelStats[];
