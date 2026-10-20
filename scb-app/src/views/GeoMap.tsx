@@ -189,20 +189,33 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     }
   }, [geo?.layer, geo]);
 
-  // ── 고정: 모든 기기가 같은 위치·확대로 멈춘다 ──
+  // ── 고정: 모든 기기가 같은 위치·확대로 맞춰진다 ──
+  // 고정해도 각 기기에서 끌고 확대해서 볼 수는 있다 (저장되지 않고 다른 기기에 영향 없음).
+  // 고정 위치를 벗어나면 「고정 위치로」 버튼으로 돌아온다.
+  // 고정 위치가 바뀔 때만 다시 맞추고, 다른 기기가 표시물을 놓을 때마다 튕겨 돌아가지 않게 한다.
+  const [offLock, setOffLock] = useState(false);
+  const backToLock = useCallback(() => {
+    const g = latestGeo.current;
+    if (g?.locked) lmap.current?.setView([g.lat, g.lng], g.zoom, { animate: true });
+  }, []);
   useEffect(() => {
     const m = lmap.current;
     if (!m || !geo) return;
-    const handlers = [m.dragging, m.touchZoom, m.doubleClickZoom, m.scrollWheelZoom, m.boxZoom, m.keyboard];
-    if (geo.locked) {
-      m.setView([geo.lat, geo.lng], geo.zoom, { animate: false });
-      handlers.forEach((h) => h.disable());
-      m.getContainer().classList.add('locked');
-    } else {
-      handlers.forEach((h) => h.enable());
-      m.getContainer().classList.remove('locked');
-    }
-  }, [geo?.locked, geo?.lat, geo?.lng, geo?.zoom, geo]);
+    m.getContainer().classList.toggle('locked', geo.locked);
+    if (geo.locked) m.setView([geo.lat, geo.lng], geo.zoom, { animate: false });
+    setOffLock(false);
+    if (!geo.locked) return;
+    const check = () => {
+      const c = m.getCenter();
+      const far = m.latLngToContainerPoint(c).distanceTo(m.latLngToContainerPoint([geo.lat, geo.lng])) > 30;
+      setOffLock(far || m.getZoom() !== geo.zoom);
+    };
+    m.on('moveend zoomend', check);
+    return () => {
+      m.off('moveend zoomend', check);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!geo, geo?.locked, geo?.lat, geo?.lng, geo?.zoom]);
 
   // ── 지도 누르기: 표시물 놓기 / 선택 해제 ──
   useEffect(() => {
@@ -278,7 +291,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
-      if (!lockedRef.current) m.dragging.enable();
+      m.dragging.enable();
       preview?.remove();
     };
   }, [mode, code, guardEdit, fail]);
@@ -630,6 +643,11 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
             <div className="geo-address">
               <Lock size={13} /> {geo.address}
             </div>
+          )}
+          {geo.locked && offLock && (
+            <button className="btn small primary geo-back" onClick={backToLock}>
+              <Crosshair size={15} /> 고정 위치로
+            </button>
           )}
           <div ref={elRef} className={`geo-map mode-${mode.kind}`} />
         </div>

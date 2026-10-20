@@ -2560,6 +2560,15 @@ a.ai-ladder-bar .ai-ladder-cta {
 .geo-map.locked {
   box-shadow: inset 0 0 0 3px rgba(194, 65, 12, 0.6);
 }
+/* 고정한 지도를 내 기기에서 옮겼을 때 돌아가는 버튼 */
+.geo-back {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
 .btn.lock-on {
   background: var(--brand);
   border-color: var(--brand);
