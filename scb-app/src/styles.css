@@ -3527,9 +3527,10 @@ a.ai-ladder-bar .ai-ladder-cta {
   .status-view .bcard {
     min-width: 0 !important;
     flex: none !important;
-    --flcol: 44px;
-    --allcol: 34px;
-    --ucol: 60px;
+    --flcol: 38px;
+    --allcol: 0px; /* ALL 칸은 층 이름과 같은 일을 하므로 휴대폰에서는 접는다 */
+    --ucol: 0px; /* 칸 수가 많아도 화면 폭 안에 나눠 들어가게 */
+    --tcol: 54px;
   }
   .status-view .grid-scroll {
     flex: none;
@@ -3537,12 +3538,50 @@ a.ai-ladder-bar .ai-ladder-cta {
     overflow-y: visible;
     padding: 6px;
   }
+  /* 칸 높이 = (화면 높이 − 위쪽 띠·전광판·건물 이름 높이) ÷ 줄 수, 18~52px 사이.
+     층이 아주 많으면 18px 에서 멈추고 아래로 스크롤한다 */
   .status-view .bgrid {
     min-height: 0;
     gap: 3px;
+    grid-auto-rows: clamp(18px, calc((100dvh - 250px) / var(--rows, 12) - 3px), 52px);
+  }
+  .status-view .allbtn {
+    visibility: hidden;
+    padding: 0;
+    overflow: hidden;
+  }
+  .status-view .flabel {
+    font-size: 11px;
+    padding: 0 2px;
+  }
+  .status-view .ucell {
+    padding: 1px 2px;
+    border-radius: 6px;
+  }
+  /* 칸 안 글자: 칸 크기에 맞춰 작게까지 줄어들게 (큰 화면용 최소 14px 해제) */
+  .status-view .ucell .unum,
+  .status-view .ucell.st-unknown .unum,
+  .status-view .ucell.vuln .unum {
+    font-size: clamp(9px, min(50cqh, 19cqi), 20px);
+  }
+  .status-view .ucell .ust,
+  .status-view .ucell .umemo {
+    font-size: clamp(8px, min(32cqh, 11cqi), 13px);
+  }
+  .status-view .tpill {
+    font-size: 10px;
+    padding: 1px 3px 1px 5px;
+  }
+  .status-view .pstat {
+    padding: 3px 2px 2px;
+    font-size: 11px;
   }
   .status-view .pstat b {
-    font-size: 20px;
+    font-size: 17px;
+  }
+  .status-view .bhead {
+    padding: 6px 10px;
+    font-size: 15px;
   }
   .status-view .side {
     min-height: 50dvh;
