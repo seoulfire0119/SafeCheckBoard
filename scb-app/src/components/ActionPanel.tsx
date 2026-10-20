@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, Columns2, EyeOff, Flame, Layers, MousePointerClick, Pencil, SquareDashed, SquareSplitHorizontal, TriangleAlert, X } from 'lucide-react';
 import { Modal } from './Modal';
-import type { Building, BuildingState, SessionData, Unit, UnitStatus } from '../types';
+import type { Building, BuildingState, Unit, UnitStatus } from '../types';
 import { STATUS_ICON } from './icons';
 import { WheelchairIcon } from './WheelchairIcon';
 import { useSession } from '../session-context';
@@ -11,7 +11,7 @@ import type { Selection } from './BuildingCard';
 
 /** 오른쪽 "선택·상태" 패널 — 호실/층을 고르면 상태를 바꾸고 화점·메모를 남긴다 */
 export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null; onClear: () => void; onSelect: (s: Selection | null) => void }) {
-  const { data, act, me, logs } = useSession();
+  const { data, act, logs } = useSession();
   const b = sel ? data.buildings[sel.b] : null;
   const st = sel ? data.states[sel.b] : null;
   const unit = sel?.unitId && st ? st.units.find((u) => u.id === sel.unitId) ?? null : null;
@@ -136,27 +136,23 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
         </div>
 
         <div className="toggle-row">
-          <button
-            className={`btn ${isOrigin ? 'fire on' : 'fire'}`}
-            onClick={() => {
-              // 이미 다른 곳이 화점이면 옮기는 것이므로 한 번 묻는다
-              const prev = !isOrigin && fo ? fireOriginName(data, fo) : '';
-              floorGuard.ask(
-                `화점(추정)을 ${name}(으)로 옮길까요?`,
-                prev ? [`지금 화점(추정)은 ${prev}입니다. 바꾸면 그 표시는 지워집니다.`] : [],
-                () =>
-                  act(
-                    (d) => {
-                      d.fireOrigin = isOrigin ? null : { buildingIdx: bi, unitId: unit.id, floor: unit.floor, note: '', by: `${me.dept} ${me.role}`, at: Date.now() };
-                    },
-                    '화점',
-                    isOrigin ? `화점(추정) 해제: ${name}` : prev ? `화점(추정) 변경: ${prev} → ${name}` : `화점(추정) 지정: ${name}`,
-                  ),
-              );
-            }}
-          >
-            <Flame size={18} /> {isOrigin ? '화점 해제' : '화점(추정) 지정'}
-          </button>
+          {/* 화점(추정) 지정은 쓰지 않는다. 예전에 지정해 둔 것만 지울 수 있게 해제 버튼을 남긴다 */}
+          {isOrigin && (
+            <button
+              className="btn fire on"
+              onClick={() =>
+                act(
+                  (d) => {
+                    d.fireOrigin = null;
+                  },
+                  '화점',
+                  `화점(추정) 해제: ${name}`,
+                )
+              }
+            >
+              <Flame size={18} /> 화점 해제
+            </button>
+          )}
           <button
             className={`btn ${unit.vulnerable ? 'on' : ''}`}
             onClick={() =>
@@ -436,14 +432,6 @@ export function ActionPanel({ sel, onClear, onSelect }: { sel: Selection | null;
 
 type PendingChange = { title: string; risks: string[]; run: () => void };
 
-/** 화점(추정) 위치 이름 — "101동 4F 401호" */
-function fireOriginName(d: SessionData, fo: NonNullable<SessionData['fireOrigin']>) {
-  const b = d.buildings[fo.buildingIdx];
-  const st = d.states[fo.buildingIdx];
-  if (!b || !st) return '다른 곳';
-  const u = fo.unitId ? st.units.find((x) => x.id === fo.unitId) : null;
-  return u ? unitFullName(b, st, u) : `${b.name} ${floorLabel(b, st, fo.floor)}`;
-}
 
 /**
  * 여러 칸을 한꺼번에 바꿀 때 실수하기 쉬운 경우(화점·화재층·피난약자 등)를 먼저 묻는다.

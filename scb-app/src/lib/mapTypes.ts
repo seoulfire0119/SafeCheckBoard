@@ -14,7 +14,7 @@ export const MAP_CATS: { label: string; types: string[] }[] = [
   { label: '건물/시설', types: ['building', 'entrance', 'road', 'fireHydrant', 'standpipe'] },
   { label: '소방진압', types: ['pumpTruck', 'tankTruck', 'foamTruck', 'aerialLadder', 'articulatedLadder', 'supportTender'] },
   { label: '구조·구급', types: ['rescueVehicle', 'rescueBus', 'ambulance', 'ambulanceNP'] },
-  { label: '지휘·지원', types: ['commandTent', 'commandCar', 'diagnosisCar', 'fireInvestigationCar'] },
+  { label: '지휘·지원', types: ['commandTent', 'commandCar', 'diagnosisCar', 'fireInvestigationCar', 'emergencyMedical'] },
   { label: '유관기관', types: ['police', 'cityHall', 'districtOffice', 'gasAgency', 'electricAgency', 'healthCenter'] },
 ];
 
@@ -48,6 +48,7 @@ export const MAP_TYPES: Record<string, MapType> = {
   commandCar: { label: '지휘차', short: '지휘차', color: '#1565c0', w: 76, h: 64 },
   diagnosisCar: { label: '진단차', short: '진단차', color: '#1565c0', w: 76, h: 64 },
   fireInvestigationCar: { label: '화재조사차', short: '화재조사차', color: '#1565c0', w: 76, h: 64 },
+  emergencyMedical: { label: '응급의료소', short: '응급의료소', color: '#2e7d32', w: 76, h: 64 },
   // 예전에 놓은 본부차·회복차 표시물을 계속 보여 주기 위해 남겨 둔다 (목록에서는 뺐음)
   headquartersCar: { label: '본부차', short: '본부', color: '#0d47a1', w: 76, h: 64 },
   recoveryVehicle: { label: '회복차', short: '회복', color: '#4e342e', w: 76, h: 64 },

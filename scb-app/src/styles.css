@@ -808,6 +808,11 @@ a.ai-ladder-bar .ai-ladder-cta {
   font-weight: 600;
   color: #d6d3d1;
 }
+.summary-bar .sm small.sm-hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a8a29e;
+}
 .summary-bar .sm em {
   font-style: normal;
   font-weight: 800;

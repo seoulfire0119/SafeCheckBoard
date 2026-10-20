@@ -1,6 +1,5 @@
-import { Clock, Flame, HardHat, UserRound } from 'lucide-react';
+import { Clock, HardHat, UserRound } from 'lucide-react';
 import type { SessionData } from '../types';
-import { floorLabel, unitLabel } from '../lib/building';
 import { teamLevel } from '../lib/teams';
 
 const p2 = (n: number) => String(n).padStart(2, '0');
@@ -14,7 +13,7 @@ function parseIncidentDate(s: string | undefined): number | null {
 }
 
 /**
- * 큰 화면에서 한눈에 보는 요약 — 경과시간 · 화점 · 진입대 · 인명
+ * 큰 화면에서 한눈에 보는 요약 — 경과시간 · 진입대 · 인명 (진압작전도 탭에서만 보임)
  * 경과시간은 재난발생현황 일시(최초 신고)가 있으면 그때부터, 없으면 현장을 연 때부터.
  */
 export function SummaryBar({ data, now }: { data: SessionData; now: number }) {
@@ -31,11 +30,6 @@ export function SummaryBar({ data, now }: { data: SessionData; now: number }) {
   const rows = data.casualty.rows.filter((r) => r.status);
   const tri = (k: string) => rows.filter((r) => r.status === k).length;
 
-  const fo = data.fireOrigin;
-  const fb = fo ? data.buildings[fo.buildingIdx] : null;
-  const fst = fo ? data.states[fo.buildingIdx] : null;
-  const fu = fo?.unitId && fst ? fst.units.find((u) => u.id === fo.unitId) : null;
-  const fire = fo && fb ? `${fb.name} ${floorLabel(fb, fst ?? undefined, fo.floor)}${fu ? ` ${unitLabel(fb, fu)}` : ''}` : '';
 
   return (
     <div className="summary-bar">
@@ -43,11 +37,6 @@ export function SummaryBar({ data, now }: { data: SessionData; now: number }) {
         <Clock size={18} />
         <span>경과</span>
         <b>{elapsed == null ? '–' : `${Math.floor(sec / 3600)}:${p2(Math.floor((sec % 3600) / 60))}:${p2(sec % 60)}`}</b>
-      </div>
-      <div className={`sm ${fire ? 'fire' : ''}`}>
-        <Flame size={18} />
-        <span>화점</span>
-        <b>{fire || '미지정'}</b>
       </div>
       <div className={`sm ${danger ? 'danger' : warning ? 'warning' : ''}`}>
         <HardHat size={18} />

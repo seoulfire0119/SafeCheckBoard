@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, ClipboardList, FileText, Flame, LogOut, Map as MapIcon, Minimize, Ambulance, UserRound, type LucideIcon } from 'lucide-react';
+import { Building2, ClipboardList, FileText, LogOut, Map as MapIcon, Minimize, Ambulance, UserRound, type LucideIcon } from 'lucide-react';
 import { useSession } from '../session-context';
 import { identityText } from '../lib/identity';
 import { STATUS, STATUS_ORDER } from '../lib/building';
@@ -130,9 +130,6 @@ export function Board({ onLeave }: { onLeave: () => void }) {
           <button className="btn small" onClick={enterFull}>전체화면</button>
           <button className="btn small" onClick={() => setDialog('access')}>{access === 'owner' ? '권한 관리' : canEdit ? '편집 권한' : '열람 권한'}</button>
           <div className="status-chips">
-            {data.fireOrigin && <span className="schip fire">
-                <Flame size={13} /> 화점
-              </span>}
             {counts.map(({ s, n }) => (
               <span key={s} className="schip" style={{ background: STATUS[s].color }}>
                 {STATUS[s].label} {n}
@@ -157,7 +154,8 @@ export function Board({ onLeave }: { onLeave: () => void }) {
         {data.closed && <strong>종료된 현장 · 읽기 전용</strong>}
         {alerts.map((t) => <strong key={t.id} style={{ color: LEVEL[teamLevel(t, data.timerSettings, now)].color }}>{teamTitle(t)} {LEVEL[teamLevel(t, data.timerSettings, now)].label}</strong>)}
       </div>
-      <SummaryBar data={data} now={now} />
+      {/* 요약판은 진압작전도에서만 (현황판은 칸이 많아 화면을 아끼려고 숨김) */}
+      {view === 'map' && <SummaryBar data={data} now={now} />}
       {!canEdit && (
         <p className="read-only-notice">
           {data.closed

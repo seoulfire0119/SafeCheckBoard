@@ -1,6 +1,7 @@
 import {
   Ambulance,
   BedDouble,
+  BriefcaseMedical,
   Boxes,
   Building,
   Building2,
@@ -69,6 +70,7 @@ export const MAP_ICON: Record<string, LucideIcon> = {
   commandCar: Flag,
   diagnosisCar: Gauge,
   fireInvestigationCar: ScanSearch,
+  emergencyMedical: BriefcaseMedical,
   headquartersCar: Landmark,
   recoveryVehicle: BedDouble,
   police: ShieldCheck,
