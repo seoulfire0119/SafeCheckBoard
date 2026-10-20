@@ -3464,3 +3464,137 @@ a.ai-ladder-bar .ai-ladder-cta {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+
+/* ── 휴대폰 (폭 640px 이하) ─────────────────────────────
+   큰 모니터용 "한 화면 고정" 배치 대신, 화면 아래쪽 전체를 손가락으로 밀어 스크롤한다.
+   위쪽 띠는 한 줄로 줄이고, 칸을 고르면 상태 패널이 아래에서 올라온다. */
+@media (max-width: 640px) {
+  /* 위쪽 띠: 한 줄 + 탭 한 줄 */
+  .topbar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .topbar .title {
+    min-height: 34px;
+  }
+  .topbar .site,
+  .top-right .hide-phone {
+    display: none;
+  }
+  .top-right {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+  .top-right .btn.small {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 13px;
+  }
+  .tabs button {
+    min-height: 36px;
+    font-size: 14px;
+  }
+  .safety-strip {
+    padding: 4px 8px;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .safety-strip .btn.small {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  /* 화면 아래쪽은 통째로 스크롤 (손가락 어디로 밀어도 움직이게) */
+  .view {
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* 현황판: 건물 카드를 세로로 쌓고, 칸을 좁혀 화면 폭에 맞춘다 */
+  .status-view {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .status-view .buildings {
+    flex-direction: column;
+    overflow: visible;
+    padding: 8px;
+  }
+  .status-view .bcard {
+    min-width: 0 !important;
+    flex: none !important;
+    --flcol: 44px;
+    --allcol: 34px;
+    --ucol: 60px;
+  }
+  .status-view .grid-scroll {
+    flex: none;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding: 6px;
+  }
+  .status-view .bgrid {
+    min-height: 0;
+    gap: 3px;
+  }
+  .status-view .pstat b {
+    font-size: 20px;
+  }
+  .status-view .side {
+    min-height: 50dvh;
+    border-left: none;
+  }
+  .status-view .side .side-body {
+    overflow: visible;
+  }
+  .status-view .fold-btn {
+    display: none;
+  }
+  /* 칸을 고르면 상태 패널이 화면 아래에서 올라온다 (스크롤해서 찾지 않아도 되게) */
+  .status-view .side.has-sel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: 0;
+    max-height: 62dvh;
+    z-index: 1500;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.28);
+  }
+  .status-view .side.has-sel .side-body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .status-view .side.has-sel .side-tabs {
+    display: none;
+  }
+
+  /* 진압작전도: 도구 버튼을 한 줄로 (옆으로 밀어서 봄), 요약판도 작게 */
+  .map-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 6px 8px;
+    scrollbar-width: none;
+  }
+  .map-toolbar > * {
+    flex: none;
+  }
+  .map-toolbar .geo-search {
+    flex: 0 0 200px;
+  }
+  .summary-bar {
+    padding: 4px 8px;
+    gap: 2px 12px;
+  }
+  .summary-bar .sm > b {
+    font-size: 15px;
+  }
+  .summary-bar .sm > span {
+    font-size: 12px;
+  }
+}

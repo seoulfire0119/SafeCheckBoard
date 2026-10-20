@@ -126,8 +126,8 @@ export function Board({ onLeave }: { onLeave: () => void }) {
           ))}
         </nav>
         <div className="top-right">
-          <button className="btn small" onClick={() => setLarge(!large)}>글자 {large ? '기본' : '확대'}</button>
-          <button className="btn small" onClick={enterFull}>전체화면</button>
+          <button className="btn small hide-phone" onClick={() => setLarge(!large)}>글자 {large ? '기본' : '확대'}</button>
+          <button className="btn small hide-phone" onClick={enterFull}>전체화면</button>
           <button className="btn small" onClick={() => setDialog('access')}>{access === 'owner' ? '권한 관리' : canEdit ? '편집 권한' : '열람 권한'}</button>
           <div className="status-chips">
             {counts.map(({ s, n }) => (

@@ -56,7 +56,8 @@ export function BuildingCard(props: {
   const cols = b.defaultUnits;
   const hasTeams = data.teams.some((t) => t.status !== 'waiting' && t.floorKey.startsWith(`${idx}_`));
   const gridStyle: CSSProperties = {
-    gridTemplateColumns: `minmax(56px,auto) 40px repeat(${cols}, minmax(140px, 1fr)) ${hasTeams ? '78px' : '0px'}`,
+    // 칸 최소 너비는 CSS 변수(--ucol) — 휴대폰에서는 좁게 해서 화면 안에 들어오게 한다
+    gridTemplateColumns: `minmax(var(--flcol, 56px),auto) var(--allcol, 40px) repeat(${cols}, minmax(var(--ucol, 140px), 1fr)) ${hasTeams ? '78px' : '0px'}`,
   };
   // 호수(1501호)가 잘리지 않을 만큼은 넓게 — 건물이 많으면 옆으로 밀어서 봄
   // 칸 + 칸 사이 간격(5px) + 안쪽 여백까지 더해서 옆으로 넘치지 않게

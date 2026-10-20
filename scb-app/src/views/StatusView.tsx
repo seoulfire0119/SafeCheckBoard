@@ -85,7 +85,8 @@ export function StatusView() {
           </button>
         </aside>
       ) : (
-      <aside className="side">
+      // 휴대폰에서는 칸을 고르면 이 패널이 아래에서 올라오는 시트가 된다 (has-sel)
+      <aside className={`side ${sel && tab === 'select' ? 'has-sel' : ''}`}>
         <div className="side-tabs" role="tablist">
           <button className={tab === 'select' ? 'on' : ''} onClick={() => setTab('select')}>
             선택·상태
