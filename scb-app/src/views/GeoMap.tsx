@@ -2,16 +2,19 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Building2, Crosshair, Flame, HardHat, Hand, Layers, Lock, LockOpen, Printer, Route, Search, Trash2, Waves, X } from 'lucide-react';
+import { Building2, Crosshair, Flame, HardHat, Hand, Lock, LockOpen, Printer, Route, Search, Trash2, Waves, X } from 'lucide-react';
 import type { GeoItem, GeoLine, GeoState, MapDoc, SessionData } from '../types';
 import { useNow, useSession } from '../session-context';
-import { saveField, saveMap } from '../lib/session';
-import { MAP_CATS, MAP_TYPES } from '../lib/mapTypes';
+import { MapEditDenied, saveField, saveMap, updateGeo } from '../lib/session';
+import { canTouch, itemScale, MAP_CATS, MAP_TYPES } from '../lib/mapTypes';
+import { deviceUid } from '../firebase';
+import { PaletteDrawer, PaletteGroup } from '../components/PaletteGroup';
 import { floorKey, floorLabel, floorsDescending, STATUS, unitLabel } from '../lib/building';
 import { teamElapsed, teamLevel, teamMain, teamPlace, teamSub } from '../lib/teams';
 import { mmss, uid } from '../lib/format';
 import { geocode, offsetMeters, reverseGeocode, searchPlace, tileUrl, VWORLD_ATTR, type Place } from '../lib/vworld';
 import { Inspector, MapTypeIcon } from './MapView';
+import { WheelchairIcon } from '../components/WheelchairIcon';
 
 const SEOUL = { lat: 37.5665, lng: 126.978 };
 
@@ -33,7 +36,7 @@ const emptyGeo = (lat: number, lng: number): GeoState => ({
  * 위치는 위도·경도로 저장되어 모든 기기에서 같은 자리에 보인다.
  */
 export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode }) {
-  const { code, data, log, toast, canEdit } = useSession();
+  const { code, data, log, toast, canEdit, access } = useSession();
   const now = useNow();
   const geo = map.geo;
   const remoteBase = useRef(map);
@@ -65,6 +68,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
   const lockedRef = useRef(false);
   lockedRef.current = geo?.locked ?? false;
 
+  /** 지도 설정(위치·고정·배경)만 저장한다. 표시물·선은 아래 editGeo 로 */
   const persist = useCallback(
     (patch: Partial<GeoState>) => {
       if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return Promise.resolve(); }
@@ -72,6 +76,46 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     },
     [code, toast],
   );
+
+  // ── 표시물·선 고치기: 본인이 놓은 것만, 관리자는 전부 ──
+  const isOwner = access === 'owner';
+  const [myUid, setMyUid] = useState('');
+  useEffect(() => { void deviceUid().then(setMyUid); }, []);
+  const who = useRef({ uid: '', isOwner: false });
+  who.current = { uid: myUid, isOwner };
+  const mayTouch = useCallback((x: { by?: string }) => canTouch(x, myUid, isOwner), [myUid, isOwner]);
+
+  /** 저장하는 순간의 최신 작전도 위에 바꾼다 (다른 기기의 변경과 충돌하지 않음) */
+  const editGeo = useCallback(
+    (fn: (g: GeoState) => Partial<Pick<GeoState, 'items' | 'lines'>> | null, logText: string) => {
+      if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return Promise.resolve(); }
+      return updateGeo(code, fn, logText).catch((e: Error) => toast(`작전도 저장 실패: ${e.message}`, 'error'));
+    },
+    [code, toast],
+  );
+  const denied = () => new MapEditDenied('다른 사람이 놓은 표시물은 관리자만 고치거나 지울 수 있습니다.');
+  const addItem = useCallback(
+    (it: GeoItem) => editGeo((g) => ({ items: [...g.items, { ...it, by: who.current.uid }] }), `표시물 추가: ${it.label || MAP_TYPES[it.type]?.label || it.type}`),
+    [editGeo],
+  );
+  const changeItem = useCallback(
+    (id: string, patch: Partial<GeoItem>, text: string) =>
+      editGeo((g) => {
+        const x = g.items.find((i) => i.id === id);
+        if (!x) return null;
+        if (!canTouch(x, who.current.uid, who.current.isOwner)) throw denied();
+        Object.assign(x, patch);
+        return { items: g.items };
+      }, text),
+    [editGeo],
+  );
+  const removeItem = (id: string, text: string) =>
+    editGeo((g) => {
+      const x = g.items.find((i) => i.id === id);
+      if (!x) return null;
+      if (!canTouch(x, who.current.uid, who.current.isOwner)) throw denied();
+      return { items: g.items.filter((i) => i.id !== id) };
+    }, text);
 
   // ── 처음 위치: 저장된 위치 → 내 GPS → 재난발생현황 장소 → 서울시청 ──
   useEffect(() => {
@@ -118,7 +162,11 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     };
     applyScale();
     m.on('zoom zoomend', applyScale);
+    // 전체화면·표시물 목록 접기 등으로 지도 칸 크기가 바뀌면 지도를 다시 맞춘다
+    const ro = new ResizeObserver(() => m.invalidateSize());
+    ro.observe(m.getContainer());
     return () => {
+      ro.disconnect();
       m.remove();
       lmap.current = null;
       markers.current.clear();
@@ -173,16 +221,15 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
         ...(team ? { teamId: team.id, color: team.color } : {}),
         ...(md.type === 'text' ? { label: '메모' } : {}),
       };
-      persist({ items: [...(latestItems.current ?? []), it] });
+      addItem(it);
       setSelId(it.id);
       setMode({ kind: 'select' });
-
     };
     m.on('click', onClick);
     return () => {
       m.off('click', onClick);
     };
-  }, [data.teams, persist, log]);
+  }, [data.teams, addItem]);
 
   // ── 선 그리기 (진입경로·수관) ──
   useEffect(() => {
@@ -216,9 +263,8 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       preview.remove();
       preview = null;
       if (pts.length >= 2) {
-        const line: GeoLine = { id: uid(), kind: mode.line, pts: pts.flatMap((p) => [p.lat, p.lng]), color: style.color! };
-        persist({ lines: [...latestLines.current, line] });
-
+        const line: GeoLine = { id: uid(), kind: mode.line, pts: pts.flatMap((p) => [p.lat, p.lng]), color: style.color!, by: who.current.uid };
+        editGeo((g) => ({ lines: [...g.lines, line] }), `${mode.line === 'hose' ? '수관' : '진입경로'} 그리기`);
       }
       pts = [];
     };
@@ -234,7 +280,7 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       if (!lockedRef.current) m.dragging.enable();
       preview?.remove();
     };
-  }, [mode, persist, log]);
+  }, [mode, editGeo]);
 
   // ── 표시물 그리기 (데이터가 바뀔 때마다 맞춘다) ──
   // 끄는 도중에 모양을 새로 그리면 손가락에서 놓쳐 버리므로:
@@ -268,14 +314,19 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
           dragging.current = null;
           const p = self.getLatLng();
           pending.current.set(it.id, { lat: p.lat, lng: p.lng, until: Date.now() + 5000 });
-          const items = (latestItems.current ?? []).map((x) => (x.id === it.id ? { ...x, lat: p.lat, lng: p.lng } : x));
-          persist({ items });
+          changeItem(it.id, { lat: p.lat, lng: p.lng }, `표시물 이동: ${it.label || MAP_TYPES[it.type]?.label || it.type}`);
           setSelId(it.id);
         });
         mk.addTo(ml);
         markers.current.set(it.id, mk);
         iconHtml.current.set(it.id, html);
-      } else if (dragging.current !== it.id) {
+      }
+      // 남이 놓은 표시물은 끌어 옮길 수 없다 (관리자는 전부 가능)
+      if (mk.dragging) {
+        if (canEdit && mayTouch(it)) mk.dragging.enable();
+        else mk.dragging.disable();
+      }
+      if (dragging.current !== it.id) {
         const pd = pending.current.get(it.id);
         const arrived = pd && Math.abs(pd.lat - it.lat) < 1e-9 && Math.abs(pd.lng - it.lng) < 1e-9;
         if (pd && !arrived && Date.now() < pd.until) {
@@ -299,14 +350,43 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
         iconHtml.current.delete(id);
       }
     }
-  }, [geo, data, now, selId, persist]);
+  }, [geo, data, now, selId, changeItem, mayTouch, canEdit]);
 
   // ── 현황판 → 지도: 고정된 뒤부터 화점·진입대·건물 현황표가 저절로 나타나고 사라진다 ──
+  // 현황판이 바뀌었을 때(또는 지도를 고정했을 때)만 따라간다.
+  // 다른 기기가 작전도를 저장했다고 다시 맞추지 않는다 — 기기마다 현황판을 받는 시점이 달라서
+  // 서로 고쳐 쓰기를 반복하면 작전도 문서에 저장이 계속 겹쳐 모두 저장 실패가 난다.
+  const boardSig = JSON.stringify([
+    data.buildings.map((b) => b.name),
+    data.fireOrigin,
+    data.teams.map((t) => [t.id, t.status, t.floorKey]),
+  ]);
+  const latestGeo = useRef(geo);
+  latestGeo.current = geo;
+  const syncing = useRef(false);
+  const [syncRetry, setSyncRetry] = useState(0);
   useEffect(() => {
-    if (!geo?.locked) return;
-    const r = syncWithBoard(geo.items, data, geo.lat, geo.lng);
-    if (r) persist({ items: r.items });
-  }, [geo, data, persist]);
+    const g = latestGeo.current;
+    if (!g?.locked || !editable.current || syncing.current) return;
+    if (!syncWithBoard(g.items, data, g.lat, g.lng)) return;
+    syncing.current = true;
+    updateGeo(
+      code,
+      (cur) => {
+        const r = cur.locked ? syncWithBoard(cur.items, data, cur.lat, cur.lng) : null;
+        return r ? { items: r.items } : null;
+      },
+      '작전도 현황판 따라가기',
+      { track: false },
+    )
+      .catch(() => {
+        // 저장이 겹쳐 실패하면 조금 뒤 최신 작전도로 한 번 더 맞춘다 (사용자에게는 알리지 않음)
+        if (syncRetry < 3) setTimeout(() => setSyncRetry((n) => n + 1), 2000 + Math.random() * 2000);
+      })
+      .finally(() => { syncing.current = false; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardSig, geo?.locked, code, syncRetry]);
+  useEffect(() => setSyncRetry(0), [boardSig]);
 
   // ── 선 ──
   useEffect(() => {
@@ -404,16 +484,25 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     }
   };
 
-  const patchSel = (patch: { label?: string; color?: string }) =>
-    sel && persist({ items: geo.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)) });
+  const selName = sel ? sel.label || MAP_TYPES[sel.type]?.label || sel.type : '';
+  const patchSel = (patch: { label?: string; color?: string; scale?: number }) => {
+    if (!sel) return;
+    const what = patch.label !== undefined ? `이름 → ${patch.label || '(기본)'}` : patch.color ? '색' : patch.scale ? `크기 ${Math.round(patch.scale * 100)}%` : '';
+    changeItem(sel.id, patch, `표시물 수정: ${selName} ${what}`);
+  };
+  const selTouchable = sel ? mayTouch(sel) : selLine ? mayTouch(selLine) : false;
 
   const removeSelected = () => {
     if (sel) {
-      persist({ items: geo.items.filter((x) => x.id !== sel.id) });
-
+      removeItem(sel.id, `표시물 삭제: ${selName}`);
     } else if (selLine) {
-      persist({ lines: geo.lines.filter((x) => x.id !== selLine.id) });
-
+      const id = selLine.id;
+      editGeo((g) => {
+        const x = g.lines.find((l) => l.id === id);
+        if (!x) return null;
+        if (!canTouch(x, who.current.uid, who.current.isOwner)) throw denied();
+        return { lines: g.lines.filter((l) => l.id !== id) };
+      }, `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
     }
     setSelId(null);
   };
@@ -422,9 +511,6 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
     <div className="map-view geo-wrap">
       <div className="map-toolbar">
         {modeSwitch}
-        <button className={`btn small ${palette ? 'on' : ''}`} onClick={() => setPalette(!palette)}>
-          <Layers size={16} /> 표시물
-        </button>
         <span className="sep" />
         <form
           className="search geo-search"
@@ -487,9 +573,8 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
       </div>
 
       <div className="map-body">
-        {palette && (
-          <aside className="palette">
-            <h4>건물 현황표</h4>
+        <PaletteDrawer open={palette} onToggle={() => setPalette(!palette)} onMoved={() => lmap.current?.invalidateSize()}>
+            <PaletteGroup title="건물 현황표">
             <div className="pal-grid one">
               {data.buildings.map((bd) => {
                 const placed = geo.items.some((x) => x.type === 'building' && x.label === bd.name);
@@ -507,9 +592,9 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
                 );
               })}
             </div>
+            </PaletteGroup>
             {MAP_CATS.map((c) => (
-              <div key={c.label}>
-                <h4>{c.label}</h4>
+              <PaletteGroup key={c.label} title={c.label}>
                 <div className="pal-grid">
                   {c.types
                     .filter((k) => k !== 'road')
@@ -526,10 +611,9 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
                       </button>
                     ))}
                 </div>
-              </div>
+              </PaletteGroup>
             ))}
-          </aside>
-        )}
+        </PaletteDrawer>
 
         <div className="canvas-wrap">
           {mode.kind !== 'select' && (
@@ -557,11 +641,14 @@ export function GeoMap({ map, modeSwitch }: { map: MapDoc; modeSwitch: ReactNode
 
         {(sel || selLine) && (
           <aside className="map-inspector">
-            {sel && <Inspector it={sel} data={data} now={now} onPatch={patchSel} />}
+            {sel && <Inspector it={sel} data={data} now={now} onPatch={patchSel} readOnly={!canEdit || !selTouchable} />}
             {selLine && <p>{selLine.kind === 'hose' ? '수관' : '진입경로'} 선택됨</p>}
-            <button className="btn danger small block" onClick={removeSelected}>
-              <Trash2 size={16} /> 삭제
-            </button>
+            {canEdit && !selTouchable && <p className="hint">다른 사람이 놓은 것입니다. 관리자만 고치거나 지울 수 있습니다.</p>}
+            {canEdit && selTouchable && (
+              <button className="btn danger small block" onClick={removeSelected}>
+                <Trash2 size={16} /> 삭제
+              </button>
+            )}
             <button className="btn ghost small block" onClick={() => setSelId(null)}>
               <X size={16} /> 닫기
             </button>
@@ -589,8 +676,21 @@ function getGps(): Promise<{ lat: number; lng: number; acc: number }> {
   });
 }
 
-/** 지도 표시물 모양 — 예전 작전도처럼 아이콘 위·이름 아래 타일 */
+/** 지도 표시물 모양 + 표시물마다 정한 크기 배율 (CSS --it-scale) */
 function makeIcon(it: GeoItem, data: SessionData, now: number, selected: boolean): L.DivIcon {
+  const icon = makeBaseIcon(it, data, now, selected);
+  const s = itemScale(it);
+  if (s === 1) return icon;
+  const html = String(icon.options.html);
+  const root = html.slice(0, html.indexOf('>'));
+  icon.options.html = root.includes(' style="')
+    ? html.replace(' style="', ` style="--it-scale:${s};`)
+    : html.replace(/^<(\w+)/, `<$1 style="--it-scale:${s}"`);
+  return icon;
+}
+
+/** 지도 표시물 모양 — 예전 작전도처럼 아이콘 위·이름 아래 타일 */
+function makeBaseIcon(it: GeoItem, data: SessionData, now: number, selected: boolean): L.DivIcon {
   const t = MAP_TYPES[it.type] ?? MAP_TYPES.text;
   const color = it.color ?? t.color;
   const sel = selected ? ' sel' : '';
@@ -653,15 +753,23 @@ function syncWithBoard(items: GeoItem[], d: SessionData, lat: number, lng: numbe
   const notes: string[] = [];
   const names = new Set(d.buildings.map((b) => b.name));
 
-  // 건물 현황표
-  const before = out.length;
-  out = out.filter((x) => !(x.id.startsWith('auto:board:') && !names.has(x.label ?? '')));
-  if (out.length !== before) notes.push('지운 건물 현황표 정리');
+  // 건물 현황표 — 건물 이름이 바뀌면 옛 현황표의 자리·크기를 그대로 이어받는다
+  const orphans = out.filter((x) => x.id.startsWith('auto:board:') && !names.has(x.label ?? ''));
+  out = out.filter((x) => !orphans.includes(x));
   d.buildings.forEach((bd, i) => {
     if (out.some((x) => x.type === 'building' && x.label === bd.name)) return;
-    out.push({ id: `auto:board:${bd.name}`, type: 'building', label: bd.name, ...offsetMeters(lat, lng, 75 + 85 * i, 0) });
-    notes.push(`${bd.name} 현황표`);
+    const prev = orphans.shift();
+    let id = `auto:board:${bd.name}`;
+    while (out.some((x) => x.id === id)) id += '+';
+    if (prev) {
+      out.push({ ...prev, id, label: bd.name });
+      notes.push(`${prev.label} → ${bd.name} 현황표 이름 변경`);
+    } else {
+      out.push({ id, type: 'building', label: bd.name, ...offsetMeters(lat, lng, 75 + 85 * i, 0) });
+      notes.push(`${bd.name} 현황표`);
+    }
   });
+  if (orphans.length) notes.push('지운 건물 현황표 정리');
 
   // 화점
   const fo = d.fireOrigin;
@@ -715,7 +823,8 @@ function boardIcon(bi: number, data: SessionData, sel: string): L.DivIcon {
   const counts: Record<string, number> = {};
   for (const u of st.units) counts[u.status] = (counts[u.status] ?? 0) + 1;
   const teamsAt = (f: number) => data.teams.filter((t) => t.status !== 'waiting' && t.floorKey === floorKey(bi, f));
-  const w = 34 + cols * (cell + 1) + 28;
+  const vulnTotal = st.units.filter((u) => u.vulnerable).length;
+  const w = 34 + cols * (cell + 1) + 28 + (vulnTotal ? 16 : 0);
   const h = 26 + floors.length * (row + 1) + 8;
   const html = renderToStaticMarkup(
     <div className={`mk-board${sel}`} style={{ width: w }}>
@@ -723,11 +832,17 @@ function boardIcon(bi: number, data: SessionData, sel: string): L.DivIcon {
         <Building2 size={13} color="#fff" strokeWidth={2.4} />
         <b>{b.name}</b>
         {fo && <Flame size={13} color="#fde047" strokeWidth={2.6} />}
+        {vulnTotal > 0 && (
+          <span className="mb-vuln" title={`피난약자 ${vulnTotal}칸`}>
+            <WheelchairIcon size={12} /> {vulnTotal}
+          </span>
+        )}
       </div>
       <div className="mb-rows">
         {floors.map((f) => {
           const units = st.units.filter((u) => u.floor === f).sort((x, y) => x.unitIndex - y.unitIndex);
           const fireRow = fo?.floor === f;
+          const vulnRow = units.some((u) => u.vulnerable);
           return (
             <div key={f} className={`mb-row${fireRow ? ' fire' : ''}`} style={{ height: row }}>
               <span className="mb-fl" style={{ fontSize: Math.min(10, row) }}>
@@ -737,11 +852,14 @@ function boardIcon(bi: number, data: SessionData, sel: string): L.DivIcon {
                 {units.map((u) => (
                   <i
                     key={u.id}
-                    className={fo?.unitId === u.id ? 'origin' : ''}
+                    className={[fo?.unitId === u.id && 'origin', u.vulnerable && 'vuln'].filter(Boolean).join(' ')}
                     style={{ gridColumn: `${u.unitIndex} / span ${Math.min(u.spanCount, cols - u.unitIndex + 1)}`, background: STATUS[u.status].color }}
                   />
                 ))}
               </span>
+              {vulnTotal > 0 && (
+                <span className="mb-vrow">{vulnRow && <WheelchairIcon size={Math.max(9, Math.min(13, row))} />}</span>
+              )}
               <span className="mb-teams">
                 {teamsAt(f).map((t) => (
                   <em key={t.id} style={{ background: t.color }} />
@@ -760,6 +878,11 @@ function boardIcon(bi: number, data: SessionData, sel: string): L.DivIcon {
               {STATUS[k].label} {counts[k]}
             </span>
           ))}
+        {vulnTotal > 0 && (
+          <span className="mb-foot-vuln">
+            <WheelchairIcon size={10} /> 피난약자 {vulnTotal}
+          </span>
+        )}
       </div>
     </div>,
   );

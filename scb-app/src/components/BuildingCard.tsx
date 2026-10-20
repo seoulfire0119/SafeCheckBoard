@@ -1,8 +1,8 @@
 import { useState, type CSSProperties } from 'react';
-import { Building2, CarFront, ChevronDown, Flame, HardHat, Minus, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
+import { Building2, CarFront, ChevronDown, Flame, HardHat, Minus, Pencil, Plus, StickyNote, TriangleAlert, X } from 'lucide-react';
 import type { Building, PersonnelStats, Unit } from '../types';
 import { useNow, useSession } from '../session-context';
-import { floorKey, floorLabel, floorsDescending, isParking, rooftopFloor, STATUS, unitLabel } from '../lib/building';
+import { floorKey, floorLabel, floorsDescending, isParking, resizeBuilding, rooftopFloor, STATUS, unitLabel } from '../lib/building';
 import { LEVEL, teamElapsed, teamLevel, teamMain, teamsByFloor } from '../lib/teams';
 import { mmss } from '../lib/format';
 import { Modal } from './Modal';
@@ -36,6 +36,7 @@ export function BuildingCard(props: {
   const stats = data.personnelStats[idx];
   const [editStat, setEditStat] = useState<keyof PersonnelStats | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const byFloor = teamsByFloor(data);
   const roof = rooftopFloor(b);
   const fo = data.fireOrigin && data.fireOrigin.buildingIdx === idx ? data.fireOrigin : null;
@@ -74,6 +75,9 @@ export function BuildingCard(props: {
       <div className="bhead">
         {isParking(b) ? <CarFront size={18} className="ic-brand" /> : <Building2 size={18} className="ic-brand" />}
         <b className="bname">{b.name}</b>
+        <button className="icon-btn small" onClick={() => setRenaming(true)} aria-label="건물 정보 수정" title="건물 이름·층·호실 수 수정">
+          <Pencil size={15} />
+        </button>
         <small className="bmeta-txt">
           {floorsDescending(b).length}
           {b.isHorizontal && !isParking(b) ? '구역' : '층'} · {state.units.length}칸
@@ -238,6 +242,37 @@ export function BuildingCard(props: {
           }}
         />
       )}
+      {renaming && (
+        <BuildingEditDialog
+          idx={idx}
+          onClose={() => setRenaming(false)}
+          onSave={(nb) => {
+            setRenaming(false);
+            const notes: string[] = [];
+            if (nb.name !== b.name) notes.push(`이름 ${b.name} → ${nb.name}`);
+            if (nb.startFloor !== b.startFloor || nb.endFloor !== b.endFloor)
+              notes.push(`${b.isHorizontal && !isParking(b) ? '구역' : '층'} ${b.startFloor}~${b.endFloor} → ${nb.startFloor}~${nb.endFloor}`);
+            if (nb.defaultUnits !== b.defaultUnits) notes.push(`층당 칸 ${b.defaultUnits} → ${nb.defaultUnits}`);
+            if (!notes.length) return;
+            act(
+              (d) => {
+                // 최신 건물 정보에 내가 바꾼 항목만 덮어쓴다 (그사이 다른 기기가 바꾼 항목은 유지)
+                const cur = d.buildings[idx];
+                if (!cur) return;
+                const next = { ...cur };
+                if (nb.name !== b.name) next.name = nb.name;
+                if (nb.startFloor !== b.startFloor) next.startFloor = nb.startFloor;
+                if (nb.endFloor !== b.endFloor) next.endFloor = nb.endFloor;
+                if (nb.defaultUnits !== b.defaultUnits) next.defaultUnits = nb.defaultUnits;
+                if (next.startFloor > next.endFloor) return;
+                resizeBuilding(d, idx, next);
+              },
+              '건물',
+              `건물 정보 수정 (${b.name}): ${notes.join(', ')}`,
+            );
+          }}
+        />
+      )}
       {confirmRemove && (
         <Modal
           title="건물 제거"
@@ -341,6 +376,101 @@ function StatDialog(props: { label: string; value: number; onClose: () => void; 
         </button>
       </div>
     </Modal>
+  );
+}
+
+const NAME_PRESETS = ['101동', '102동', '103동', 'A동', 'B동', '본관', '별관', '상가동', '지하주차장'];
+
+/** 0층은 없으므로 건너뛴다 (1층 아래는 지하 1층) */
+const stepFloor = (f: number, d: number) => (f + d === 0 ? f + 2 * d : f + d);
+
+/** 건물 정보 수정 — 이름, 층 범위, 층당 호실 수 (늘리기·줄이기) */
+function BuildingEditDialog(props: { idx: number; onClose: () => void; onSave: (b: Building) => void }) {
+  const { data } = useSession();
+  const ob = data.buildings[props.idx];
+  const parking = isParking(ob);
+  const [name, setName] = useState(ob.name);
+  const [start, setStart] = useState(ob.startFloor);
+  const [end, setEnd] = useState(ob.endFloor);
+  const [units, setUnits] = useState(ob.defaultUnits);
+  const nb: Building = { ...ob, name: name.trim(), startFloor: start, endFloor: end, defaultUnits: units };
+  const err = !nb.name ? '이름을 입력하세요' : start > end ? '맨 아래가 맨 위보다 높습니다' : end - start > 120 ? '층(구역) 수가 너무 많습니다 (최대 120)' : '';
+  const changedShape = start !== ob.startFloor || end !== ob.endFloor || units !== ob.defaultUnits;
+  // 미리 해 보고 없어지는 칸 수를 알려 준다
+  const lost = !err && changedShape ? resizeBuilding(structuredClone(data), props.idx, nb) : 0;
+  const fu = ob.isHorizontal && !parking ? '구역' : '층';
+  const flabel = (f: number) => (parking ? `B${-f}` : ob.isHorizontal ? `${f}구역` : f < 0 ? `B${-f}F` : `${f}F`);
+
+  return (
+    <Modal
+      title="건물 정보 수정"
+      onClose={props.onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={props.onClose}>
+            취소
+          </button>
+          <button className={`btn ${lost ? 'danger' : 'primary'}`} disabled={!!err} onClick={() => props.onSave(nb)}>
+            {lost ? `${lost}칸 지우고 저장` : '저장'}
+          </button>
+        </>
+      }
+    >
+      <label className="field">
+        <span>{parking ? '주차장 이름' : ob.isHorizontal ? '시설명' : '건물명 / 동 이름'}</span>
+        <input value={name} maxLength={30} placeholder="예) 101동" onChange={(e) => setName(e.target.value)} />
+      </label>
+      <div className="chips">
+        {NAME_PRESETS.map((p) => (
+          <button key={p} className="chip" onClick={() => setName(p)}>
+            {p}
+          </button>
+        ))}
+      </div>
+
+      <div className="bedit-steps">
+        {parking ? (
+          <Stepper label="지하 몇 층까지" value={`B1 ~ B${-start}`} onMinus={() => setStart(Math.min(-1, start + 1))} onPlus={() => setStart(Math.max(-10, start - 1))} minusOff={start >= -1} plusOff={start <= -10} />
+        ) : (
+          <>
+            <Stepper label={`맨 위 ${fu}`} value={flabel(end)} onMinus={() => setEnd(stepFloor(end, -1))} onPlus={() => setEnd(stepFloor(end, 1))} minusOff={end <= start} />
+            <Stepper label={`맨 아래 ${fu}`} value={flabel(start)} onMinus={() => setStart(stepFloor(start, -1))} onPlus={() => setStart(stepFloor(start, 1))} plusOff={start >= end} />
+          </>
+        )}
+        <Stepper
+          label={parking ? '층당 구역 수' : ob.isHorizontal ? '구역당 구획수' : '층당 호실(세대) 수'}
+          value={`${units}${parking ? '구역' : '칸'}`}
+          onMinus={() => setUnits(units - 1)}
+          onPlus={() => setUnits(units + 1)}
+          minusOff={units <= 1}
+          plusOff={units >= 30}
+        />
+      </div>
+
+      {!ob.isHorizontal && <p className="hint">옥상층은 맨 위층 위로 자동으로 따라갑니다. 1층 아래는 지하 1층(B1F)입니다.</p>}
+      {changedShape && !err && (
+        <p className="hint">
+          늘어난 층·칸은 새로 생기고, 남아 있는 층·칸의 상태·메모·피난약자 표시는 그대로입니다.
+        </p>
+      )}
+      {lost > 0 && <p className="error">줄어드는 층·칸 중 {lost}칸에 상태·메모·피난약자 표시가 있습니다. 저장하면 함께 지워집니다.</p>}
+      {err && <p className="error">{err}</p>}
+    </Modal>
+  );
+}
+
+function Stepper(props: { label: string; value: string; onMinus: () => void; onPlus: () => void; minusOff?: boolean; plusOff?: boolean }) {
+  return (
+    <div className="bedit-step">
+      <span>{props.label}</span>
+      <button className="btn small icon-only" disabled={props.minusOff} onClick={props.onMinus} aria-label={`${props.label} 줄이기`}>
+        <Minus size={18} />
+      </button>
+      <b>{props.value}</b>
+      <button className="btn small icon-only" disabled={props.plusOff} onClick={props.onPlus} aria-label={`${props.label} 늘리기`}>
+        <Plus size={18} />
+      </button>
+    </div>
   );
 }
 

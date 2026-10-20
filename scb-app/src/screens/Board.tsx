@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, ClipboardList, FileText, Flame, LogOut, Map as MapIcon, Ambulance, UserRound, type LucideIcon } from 'lucide-react';
+import { Building2, ClipboardList, FileText, Flame, LogOut, Map as MapIcon, Minimize, Ambulance, UserRound, type LucideIcon } from 'lucide-react';
 import { useSession } from '../session-context';
 import { identityText } from '../lib/identity';
 import { STATUS, STATUS_ORDER } from '../lib/building';
@@ -14,7 +14,7 @@ import { copyText } from '../lib/exporter';
 import { TeamAlarm } from '../components/TeamsPanel';
 import { AccessDialog } from '../components/AccessDialog';
 import { SaveIndicator } from '../components/SaveIndicator';
-import { hasUnsavedChanges } from '../lib/save-status';
+import { discardSaves, hasUnsavedChanges, retrySaves, useSaveStatus } from '../lib/save-status';
 import { LEVEL, teamLevel, teamTitle } from '../lib/teams';
 import { useNow } from '../session-context';
 
@@ -35,10 +35,28 @@ export function Board({ onLeave }: { onLeave: () => void }) {
   const [dialog, setDialog] = useState<null | 'me' | 'log' | 'code' | 'leave' | 'access'>(null);
   const [large, setLarge] = useState(false);
   const now = useNow();
+  const saveStatus = useSaveStatus();
+  const unsaved = saveStatus.pending + saveStatus.saving + saveStatus.failed;
   useEffect(() => {
     document.body.classList.add('in-session');
     return () => document.body.classList.remove('in-session');
   }, []);
+  // 전체화면: 브라우저 주소창뿐 아니라 앱 위쪽 띠(탭·버튼·저장 상태)도 숨기고 화면만 크게 본다.
+  // 전체화면을 못 하는 기기(아이폰 등)에서도 위쪽 띠는 숨긴다. Esc·뒤로가기로 나와도 맞춰진다.
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const sync = () => { if (!document.fullscreenElement) setFull(false); };
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+  const enterFull = () => {
+    setFull(true);
+    void document.documentElement.requestFullscreen?.().catch(() => {});
+  };
+  const exitFull = () => {
+    setFull(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  };
   const alerts = data.teams.filter((t) => ['warning', 'danger'].includes(teamLevel(t, data.timerSettings, now)));
   const missing = data.personnelStats.reduce((n, s) => n + s.notFound, 0);
 
@@ -57,7 +75,21 @@ export function Board({ onLeave }: { onLeave: () => void }) {
   })).filter((x) => x.n > 0);
 
   return (
-    <div className={`board ${large ? 'large-text' : ''}`}>
+    <div className={`board ${large ? 'large-text' : ''} ${full ? 'full' : ''}`}>
+      {full && (
+        <div className="full-bar">
+          {/* 숨긴 띠의 중요한 경보는 여기서 계속 보여 준다 */}
+          {saveStatus.failed > 0 && <strong className="warn">저장 실패 {saveStatus.failed}건</strong>}
+          {alerts.map((t) => (
+            <strong key={t.id} className="warn" style={{ color: LEVEL[teamLevel(t, data.timerSettings, now)].color }}>
+              {teamTitle(t)} {LEVEL[teamLevel(t, data.timerSettings, now)].label}
+            </strong>
+          ))}
+          <button className="btn small" onClick={exitFull}>
+            <Minimize size={16} /> 전체화면 끝내기
+          </button>
+        </div>
+      )}
       <header className="topbar">
         <button className="title" onClick={() => setDialog('code')} title="세션 코드 보기">
           <span className="code-tag">{code}</span>
@@ -73,10 +105,7 @@ export function Board({ onLeave }: { onLeave: () => void }) {
         </nav>
         <div className="top-right">
           <button className="btn small" onClick={() => setLarge(!large)}>글자 {large ? '기본' : '확대'}</button>
-          <button className="btn small" onClick={() => {
-            if (document.fullscreenElement) void document.exitFullscreen();
-            else void document.documentElement.requestFullscreen().catch(() => toast('이 기기에서는 전체화면을 지원하지 않습니다.'));
-          }}>전체화면</button>
+          <button className="btn small" onClick={enterFull}>전체화면</button>
           <button className="btn small" onClick={() => setDialog('access')}>{access === 'owner' ? '권한 관리' : canEdit ? '편집 권한' : '열람 권한'}</button>
           <div className="status-chips">
             {data.fireOrigin && <span className="schip fire">
@@ -166,16 +195,28 @@ export function Board({ onLeave }: { onLeave: () => void }) {
               <button className="btn ghost" onClick={() => setDialog(null)}>
                 취소
               </button>
-              <button className="btn primary" onClick={() => {
-                if (hasUnsavedChanges()) { toast('미저장 변경이 있습니다. 저장 상태에서 다시 저장한 후 나가세요.', 'error'); return; }
+              {unsaved > 0 && (
+                <button className="btn" onClick={retrySaves}>
+                  다시 저장
+                </button>
+              )}
+              <button className={`btn ${unsaved > 0 ? 'danger' : 'primary'}`} onClick={() => {
+                if (hasUnsavedChanges() && !confirm('저장되지 않은 변경은 사라집니다. 그래도 나갈까요?')) return;
+                discardSaves();
                 onLeave();
               }}>
-                나가기
+                {unsaved > 0 ? '저장 안 하고 나가기' : '나가기'}
               </button>
             </>
           }
         >
           <p>처음 화면으로 돌아갑니다. 현장 데이터는 그대로 남아 있어서 코드 <b>{code}</b> 로 다시 들어올 수 있습니다.</p>
+          {unsaved > 0 && (
+            <p className="error">
+              아직 서버에 저장되지 않은 변경이 {unsaved}건 있습니다
+              {saveStatus.failed > 0 ? ` (저장 실패 ${saveStatus.failed}건)` : ''}. 「다시 저장」을 눌러 보고, 그래도 안 되면 저장하지 않고 나갈 수 있습니다.
+            </p>
+          )}
         </Modal>
       )}
     </div>

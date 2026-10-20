@@ -154,10 +154,13 @@ export interface MapItem {
   color?: string;
   rot?: number;
   teamId?: string;
+  scale?: number; // 표시물 크기 배율 (1 = 원래 크기)
+  by?: string; // 놓은 사람(기기) UID — 본인과 관리자만 고치고 지울 수 있다
 }
 
 export interface MapLine {
   id: string;
+  by?: string;
   kind: 'route' | 'hose' | 'line';
   points: number[]; // x1,y1,x2,y2,…
   color: string;
@@ -172,10 +175,13 @@ export interface GeoItem {
   label?: string;
   color?: string;
   teamId?: string;
+  scale?: number; // 표시물 크기 배율 (1 = 원래 크기)
+  by?: string; // 놓은 사람(기기) UID — 본인과 관리자만 고치고 지울 수 있다
 }
 
 export interface GeoLine {
   id: string;
+  by?: string;
   kind: 'route' | 'hose' | 'line';
   pts: number[]; // lat1,lng1,lat2,lng2,…
   color: string;

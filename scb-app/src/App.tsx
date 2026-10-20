@@ -133,8 +133,6 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
   return (
     <div className="home">
       <Logo />
-      <GoogleLoginButton />
-      <p className="hint">여러 PC에서 현장을 관리하려면 먼저 Google 계정으로 로그인하세요. 기존 현장의 관리 계정은 119gpt1@gmail.com입니다.</p>
       {props.me && (
         <button className="me-chip big" onClick={props.onEditMe}>
           <UserRound size={18} /> {identityText(props.me)} <small>변경</small>
@@ -176,6 +174,10 @@ function Home(props: { me: Identity | null; onEditMe: () => void; onNew: () => v
             </button>
           </form>
         </section>
+      </div>
+      <div className="home-admin">
+        <GoogleLoginButton />
+        <p className="hint">현장 개설자만 필요합니다. 로그인하면 다른 PC에서도 같은 관리 권한을 씁니다.</p>
       </div>
     </div>
   );

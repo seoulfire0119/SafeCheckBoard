@@ -356,6 +356,67 @@ export function subscribeMap(code: string, cb: (m: MapDoc) => void, onError: (e:
   );
 }
 
+/** 표시물 주인이 아니어서 고칠 수 없음 — 다시 시도해도 같으므로 "미저장"으로 남기지 않는다 */
+export class MapEditDenied extends Error {
+  code = 'permission-denied';
+}
+
+/**
+ * 지도 표시물·선 고치기 — 저장하는 순간의 최신 작전도를 읽어서 그 위에 바꾼다.
+ * 내 화면의 옛 작전도를 기준으로 합치지 않으므로, 여러 기기가 동시에 놓고·옮기고·지워도
+ * "같은 항목을 수정했습니다" 충돌이 나지 않는다.
+ * fn 이 null 을 돌려주면(바뀔 게 없으면) 저장하지 않는다.
+ */
+export function updateGeo(
+  code: string,
+  fn: (geo: GeoState) => Partial<Pick<GeoState, 'items' | 'lines'>> | null,
+  logText: string,
+  opts: { track?: boolean } = {},
+) {
+  return editMapLists(code, 'geo', fn as unknown as (m: Record<string, unknown>) => Record<string, unknown[]> | null, logText, opts);
+}
+
+/** 도면 모드 표시물·선 — updateGeo 와 같은 방식 */
+export function updatePlan(
+  code: string,
+  fn: (m: Pick<MapDoc, 'items' | 'lines'>) => Partial<Pick<MapDoc, 'items' | 'lines'>> | null,
+  logText: string,
+) {
+  return editMapLists(code, 'plan', fn as unknown as (m: Record<string, unknown>) => Record<string, unknown[]> | null, logText, {});
+}
+
+async function editMapLists(
+  code: string,
+  where: 'geo' | 'plan',
+  fn: (m: Record<string, unknown>) => Record<string, unknown[]> | null,
+  logText: string,
+  opts: { track?: boolean },
+) {
+  const actorUid = await deviceUid();
+  const actor = loadIdentity() ?? { agency: '', dept: '', role: '' };
+  const run = () => runTransaction(db, async (tx) => {
+    const ref = doc(db, 'sessions', code, 'secondary', 'map');
+    const snap = await tx.get(ref);
+    const raw = snap.exists() ? snap.data() : {};
+    const g = where === 'geo' ? obj(raw.geo) : { ...EMPTY_MAP, ...raw };
+    if (where === 'geo' && !Array.isArray(g.items)) throw new MapEditDenied('작전도 지도가 아직 준비되지 않았습니다. 잠시 후 다시 해 주세요.');
+    const out = fn({ ...g, items: structuredClone(arr(g.items)), lines: structuredClone(arr(g.lines)) });
+    if (!out) return false;
+    const prefix = where === 'geo' ? 'geo.' : '';
+    const patch: Record<string, unknown> = { updatedAt: serverTimestamp() };
+    if (out.items) patch[`${prefix}items`] = JSON.parse(JSON.stringify(out.items));
+    if (out.lines) patch[`${prefix}lines`] = JSON.parse(JSON.stringify(out.lines));
+    if (snap.exists()) tx.update(ref, patch as Record<string, never>);
+    else tx.set(ref, { ...EMPTY_MAP, ...patch });
+    tx.set(doc(collection(db, 'sessions', code, 'logs')), {
+      at: serverTimestamp(), atMs: Date.now(), actor, actorUid,
+      category: '작전도', text: logText.slice(0, 500),
+    });
+    return true;
+  });
+  return opts.track === false ? run() : trackedSave(run);
+}
+
 export async function saveMap(code: string, patch: Partial<MapDoc>, base: MapDoc) {
   const actorUid = await deviceUid();
   const actor = loadIdentity() ?? { agency: '', dept: '', role: '' };

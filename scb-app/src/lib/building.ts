@@ -1,4 +1,4 @@
-import type { Building, BuildingState, Unit, UnitStatus } from '../types';
+import type { Building, BuildingState, SessionData, Unit, UnitStatus } from '../types';
 
 export const STATUS: Record<UnitStatus, { label: string; color: string }> = {
   unknown: { label: '미확인', color: '#64748b' },
@@ -101,6 +101,78 @@ export function baseFloorLabel(b: Building, floor: number): string {
 /** 로그용 전체 이름: "101동 3F 301호" */
 export function unitFullName(b: Building, state: BuildingState | undefined, u: Unit): string {
   return `${b.name} ${floorLabel(b, state, u.floor)} ${unitLabel(b, u)}`;
+}
+
+/**
+ * 건물의 층 범위·층당 칸 수를 바꾼다 (잘못 만든 건물 고치기).
+ *  · 남는 층·칸의 상태·메모·피난약자·이름은 그대로 둔다
+ *  · 옥상층은 새 꼭대기 위로 옮겨 간다
+ *  · 새로 생긴 층·칸만 채우고, 원래 비워 둔 칸은 그대로 비워 둔다
+ *  · 없어지는 층에 있던 화점·진입대 위치는 지운다
+ * 돌려주는 값: 없어진 칸 중 상태·메모·피난약자가 적혀 있던 칸 수
+ */
+export function resizeBuilding(d: SessionData, idx: number, nb: Building): number {
+  const ob = d.buildings[idx];
+  const st = d.states[idx];
+  const oldRoof = rooftopFloor(ob);
+  const newRoof = rooftopFloor(nb);
+  const roofMoves = oldRoof != null && newRoof != null && oldRoof !== newRoof;
+  const floors = new Set(floorsOf(nb));
+  const moveFloor = (f: number) => (roofMoves && f === oldRoof ? newRoof! : f);
+  // 옥상이 내려오는 자리에 있던 보통 층은 없어진다
+  const survives = (f: number) => floors.has(moveFloor(f)) && !(roofMoves && f === newRoof);
+
+  const ids = new Map<string, string>();
+  const units: Unit[] = [];
+  let lost = 0;
+  for (const u of st.units) {
+    if (!survives(u.floor) || u.unitIndex > nb.defaultUnits) {
+      if (u.status !== 'unknown' || u.memo || u.vulnerable) lost++;
+      continue;
+    }
+    const f = moveFloor(u.floor);
+    const moved = { ...u, spanCount: Math.min(u.spanCount, nb.defaultUnits - u.unitIndex + 1) };
+    if (f !== u.floor) Object.assign(moved, { floor: f, id: unitId(f, u.unitIndex), number: unitNumber(f, u.unitIndex) });
+    ids.set(u.id, moved.id);
+    units.push(moved);
+  }
+  const oldFloors = new Set(floorsOf(ob).filter(survives).map(moveFloor));
+  for (const f of floors) {
+    for (let i = 1; i <= nb.defaultUnits; i++) {
+      if (oldFloors.has(f) && i <= ob.defaultUnits) continue; // 원래 있던 자리 (비워 둔 칸 포함)
+      if (units.some((u) => u.floor === f && u.unitIndex <= i && i < u.unitIndex + u.spanCount)) continue;
+      units.push(newUnit(f, i));
+    }
+  }
+
+  const labels: Record<string, string> = {};
+  for (const [k, v] of Object.entries(st.floorLabels)) {
+    const f = Number(k);
+    if (survives(f)) labels[String(moveFloor(f))] = v;
+  }
+  if (newRoof != null && !labels[String(newRoof)]) labels[String(newRoof)] = '옥상층';
+
+  d.buildings[idx] = nb;
+  d.states[idx] = {
+    units,
+    hiddenFloors: st.hiddenFloors.filter(survives).map(moveFloor),
+    floorLabels: labels,
+  };
+
+  const fo = d.fireOrigin;
+  if (fo && fo.buildingIdx === idx) {
+    if (!survives(fo.floor)) d.fireOrigin = null;
+    else {
+      fo.floor = moveFloor(fo.floor);
+      if (fo.unitId) fo.unitId = ids.get(fo.unitId) ?? null;
+    }
+  }
+  for (const t of d.teams) {
+    const p = parseFloorKey(t.floorKey);
+    if (!p || p.b !== idx) continue;
+    t.floorKey = survives(p.f) ? floorKey(idx, moveFloor(p.f)) : '';
+  }
+  return lost;
 }
 
 export function floorKey(buildingIdx: number, floor: number) {

@@ -41,8 +41,8 @@ export function AccessDialog({ onClose }: { onClose: () => void }) {
       }}>{data.closed ? '현장 다시 열기' : '현장 종료 · 읽기 전용으로 잠금'}</button>
     </> : <>
       <p>개설자에게 위 기기 번호를 알려주고 편집 권한을 요청하세요.</p>
-      <GoogleLoginButton />
-      <p className="hint">기존 현장 관리자는 119gpt1@gmail.com으로 로그인하면 관리 권한이 적용됩니다.</p>
+      <GoogleLoginButton className="btn small" />
+      <p className="hint">현장 관리자는 관리용 Google 계정으로 로그인하면 관리 권한이 적용됩니다.</p>
     </>}
   </Modal>;
 }

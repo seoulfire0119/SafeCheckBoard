@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
-import { Building2, FileImage, Flame, Grid3x3, Map as MapIcon, Hand, HardHat, ImageUp, Maximize, MapPin, Minus, PanelLeft, Plus, Printer, Route, Sparkles, Trash2, Waves, Wrench } from 'lucide-react';
+import { Building2, FileImage, Flame, Grid3x3, Map as MapIcon, Hand, HardHat, ImageUp, Maximize, MapPin, Minus, Plus, Printer, Route, Sparkles, Trash2, Waves, Wrench } from 'lucide-react';
 import type { MapDoc, MapItem, MapLine, SessionData, Team } from '../types';
 import { MAP_ICON } from '../components/icons';
 import { GeoMap } from './GeoMap';
 import { useNow, useSession } from '../session-context';
-import { EMPTY_MAP, saveMap, subscribeMap } from '../lib/session';
-import { compressImage, MAP_CATS, MAP_COLORS, MAP_TYPES } from '../lib/mapTypes';
+import { EMPTY_MAP, MapEditDenied, saveMap, subscribeMap, updatePlan } from '../lib/session';
+import { deviceUid } from '../firebase';
+import { PaletteDrawer, PaletteGroup } from '../components/PaletteGroup';
+import { canTouch, compressImage, itemScale, MAP_CATS, MAP_COLORS, MAP_TYPES, SCALE_MAX, SCALE_MIN, SCALE_STEP } from '../lib/mapTypes';
 import { floorLabel, floorsDescending, parseFloorKey, unitLabel } from '../lib/building';
 import { LEVEL, teamElapsed, teamLevel, teamMain, teamPlace, teamSub, teamTitle } from '../lib/teams';
 import { escapeHtml, mmss, uid } from '../lib/format';
@@ -24,7 +26,7 @@ type Drag =
 const sizeOf = (it: MapItem) => ({ w: it.w ?? MAP_TYPES[it.type]?.w ?? 80, h: it.h ?? MAP_TYPES[it.type]?.h ?? 42 });
 
 export function MapView() {
-  const { code, data, toast, canEdit } = useSession();
+  const { code, data, toast, canEdit, access } = useSession();
   const now = useNow();
   const [map, setMap] = useState<MapDoc>(EMPTY_MAP);
   const [loaded, setLoaded] = useState(false);
@@ -89,6 +91,32 @@ export function MapView() {
     if (save) persist({ items });
   };
 
+  // ── 표시물·선 고치기: 본인이 놓은 것만, 관리자는 전부 (저장 순간의 최신 작전도 위에 적용) ──
+  const isOwner = access === 'owner';
+  const [myUid, setMyUid] = useState('');
+  useEffect(() => { void deviceUid().then(setMyUid); }, []);
+  const mayTouch = (x: { by?: string }) => canTouch(x, myUid, isOwner);
+  const editPlan = (fn: Parameters<typeof updatePlan>[1], text: string) => {
+    if (!editable.current) { toast('열람 중에는 작전도를 수정할 수 없습니다.', 'error'); return; }
+    updatePlan(code, fn, text).catch((e: Error) => {
+      setMap(remoteBase.current);
+      toast(`작전도 저장 실패: ${e.message}`, 'error');
+    });
+  };
+  const denied = () => new MapEditDenied('다른 사람이 놓은 표시물은 관리자만 고치거나 지울 수 있습니다.');
+  const changeOne = <K extends 'items' | 'lines'>(key: K, id: string, change: ((x: MapDoc[K][number]) => void) | null, text: string) => {
+    const who = { uid: myUid, isOwner };
+    editPlan((m) => {
+      const list = m[key] as { id: string; by?: string }[];
+      const x = list.find((i) => i.id === id);
+      if (!x) return null;
+      if (!canTouch(x, who.uid, who.isOwner)) throw denied();
+      if (change) change(x as MapDoc[K][number]);
+      return { [key]: change ? list : list.filter((i) => i.id !== id) };
+    }, text);
+  };
+  const itemName = (it: MapItem) => it.label || MAP_TYPES[it.type]?.label || it.type;
+
   const toSvg = (e: { clientX: number; clientY: number }) => {
     const svg = svgRef.current!;
     const pt = svg.createSVGPoint();
@@ -112,11 +140,12 @@ export function MapView() {
         y: Math.round(p.y),
         ...(mode.teamId ? { teamId: mode.teamId, color: team?.color } : {}),
         ...(mode.type === 'text' ? { label: '메모' } : {}),
+        by: myUid,
       };
-      setItems([...map.items, it]);
+      setMap((m) => ({ ...m, items: [...m.items, it] }));
+      editPlan((m) => ({ items: [...m.items, it] }), `표시물 추가: ${itemName(it)}`);
       setSelId(it.id);
       setMode({ kind: 'select' });
-
       return;
     }
     if (mode.kind === 'draw') {
@@ -125,6 +154,7 @@ export function MapView() {
         kind: mode.line,
         points: [Math.round(p.x), Math.round(p.y)],
         color: mode.line === 'hose' ? '#1565c0' : mode.line === 'route' ? '#d50000' : '#263238',
+        by: myUid,
       };
       drag.current = { kind: 'draw', line };
       setDraft(line);
@@ -146,6 +176,7 @@ export function MapView() {
     }
     const it = map.items.find((x) => x.id === id);
     if (!it) return; // 선(line) 선택
+    if (!canEdit || !mayTouch(it)) return; // 남이 놓은 표시물은 선택만 (관리자는 전부 옮길 수 있음)
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = role === 'resize' ? { kind: 'resize', id } : { kind: 'move', id, dx: p.x - it.x, dy: p.y - it.y, moved: false };
   };
@@ -175,8 +206,9 @@ export function MapView() {
           d.moved = true;
           return { ...it, x: Math.round(p.x - d.dx), y: Math.round(p.y - d.dy) };
         }
-        const w = Math.max(40, Math.round((p.x - it.x) * 2));
-        const h = Math.max(30, Math.round((p.y - it.y) * 2));
+        const s = itemScale(it);
+        const w = Math.max(40, Math.round(((p.x - it.x) * 2) / s));
+        const h = Math.max(30, Math.round(((p.y - it.y) * 2) / s));
         return { ...it, w, h };
       }),
     }));
@@ -189,33 +221,40 @@ export function MapView() {
     if (d.kind === 'draw') {
       setDraft(null);
       if (d.line.points.length >= 4) {
-        const lines = [...map.lines, d.line];
-        setMap((m) => ({ ...m, lines }));
-        persist({ lines });
-
+        const line = d.line;
+        setMap((m) => ({ ...m, lines: [...m.lines, line] }));
+        editPlan((m) => ({ lines: [...m.lines, line] }), `${line.kind === 'hose' ? '수관' : '진입경로'} 그리기`);
       }
     } else if (d.kind === 'resize' || d.moved) {
-      persist({ items: mapRef.current.items });
+      const it = mapRef.current.items.find((x) => x.id === d.id);
+      if (it) {
+        const patch = d.kind === 'resize' ? { w: it.w, h: it.h } : { x: it.x, y: it.y };
+        changeOne('items', d.id, (x) => Object.assign(x, patch), `표시물 ${d.kind === 'resize' ? '크기 변경' : '이동'}: ${itemName(it)}`);
+      }
     }
   };
 
   const sel = map.items.find((x) => x.id === selId) ?? null;
   const selLine = map.lines.find((x) => x.id === selId) ?? null;
 
+  const selTouchable = sel ? mayTouch(sel) : selLine ? mayTouch(selLine) : false;
+
   const removeSelected = () => {
     if (sel) {
-      setItems(map.items.filter((x) => x.id !== sel.id));
-
+      setMap((m) => ({ ...m, items: m.items.filter((x) => x.id !== sel.id) }));
+      changeOne('items', sel.id, null, `표시물 삭제: ${itemName(sel)}`);
     } else if (selLine) {
-      const lines = map.lines.filter((x) => x.id !== selLine.id);
-      setMap((m) => ({ ...m, lines }));
-      persist({ lines });
-
+      setMap((m) => ({ ...m, lines: m.lines.filter((x) => x.id !== selLine.id) }));
+      changeOne('lines', selLine.id, null, `${selLine.kind === 'hose' ? '수관' : '진입경로'} 삭제`);
     }
     setSelId(null);
   };
 
-  const patchSel = (patch: Partial<MapItem>) => sel && setItems(map.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)));
+  const patchSel = (patch: Partial<MapItem>) => {
+    if (!sel) return;
+    setMap((m) => ({ ...m, items: m.items.map((x) => (x.id === sel.id ? { ...x, ...patch } : x)) }));
+    changeOne('items', sel.id, (x) => Object.assign(x, patch), `표시물 수정: ${itemName(sel)}`);
+  };
 
   const uploadBg = async (f: File) => {
     if (!canEdit) return;
@@ -291,9 +330,6 @@ export function MapView() {
     <div className="map-view">
       <div className="map-toolbar">
         {modeSwitch}
-        <button className={`btn small ${palette ? 'on' : ''}`} onClick={() => setPalette(!palette)}>
-          <PanelLeft size={16} /> 표시물
-        </button>
         <span className="sep" />
         <button className={`btn small ${mode.kind === 'select' ? 'on' : ''}`} onClick={() => setMode({ kind: 'select' })}>
           <Hand size={16} /> 선택·이동
@@ -311,7 +347,12 @@ export function MapView() {
           <Waves size={16} /> 수관
         </button>
         <span className="sep" />
-        <button className="btn small primary" onClick={runAuto} title="건물·화점·진입대를 현황판 정보대로 자동으로 놓습니다">
+        <button
+          className="btn small primary"
+          onClick={runAuto}
+          disabled={!isOwner}
+          title={isOwner ? '건물·화점·진입대를 현황판 정보대로 자동으로 놓습니다' : '자동 배치는 관리자만 할 수 있습니다 (다른 사람의 표시물도 옮기므로)'}
+        >
           <Sparkles size={16} /> 자동 배치
         </button>
         <button className="btn small" disabled={busy} onClick={() => fileRef.current?.click()}>
@@ -368,9 +409,8 @@ export function MapView() {
       </div>
 
       <div className="map-body">
-        {palette && (
-          <aside className="palette">
-            <h4>진입대</h4>
+        <PaletteDrawer open={palette} onToggle={() => setPalette(!palette)}>
+            <PaletteGroup title="진입대">
             <div className="pal-grid">
               {data.teams.map((t) => (
                 <button
@@ -387,9 +427,9 @@ export function MapView() {
                 </button>
               ))}
             </div>
+            </PaletteGroup>
             {MAP_CATS.map((c) => (
-              <div key={c.label}>
-                <h4>{c.label}</h4>
+              <PaletteGroup key={c.label} title={c.label}>
                 <div className="pal-grid">
                   {c.types.map((k) => (
                     <button
@@ -404,10 +444,9 @@ export function MapView() {
                     </button>
                   ))}
                 </div>
-              </div>
+              </PaletteGroup>
             ))}
-          </aside>
-        )}
+        </PaletteDrawer>
 
         <div className="canvas-wrap">
           {mode.kind !== 'select' && (
@@ -490,11 +529,14 @@ export function MapView() {
 
         {(sel || selLine) && (
           <aside className="map-inspector">
-            {sel && <Inspector it={sel} data={data} now={now} onPatch={patchSel} />}
+            {sel && <Inspector it={sel} data={data} now={now} onPatch={patchSel} readOnly={!canEdit || !selTouchable} />}
             {selLine && <p>{selLine.kind === 'hose' ? '수관' : '진입경로'} 선택됨</p>}
-            <button className="btn danger small block" onClick={removeSelected}>
-              <Trash2 size={16} /> 삭제
-            </button>
+            {canEdit && !selTouchable && <p className="hint">다른 사람이 놓은 것입니다. 관리자만 고치거나 지울 수 있습니다.</p>}
+            {canEdit && selTouchable && (
+              <button className="btn danger small block" onClick={removeSelected}>
+                <Trash2 size={16} /> 삭제
+              </button>
+            )}
             <button className="btn ghost small block" onClick={() => setSelId(null)}>
               닫기
             </button>
@@ -507,7 +549,19 @@ export function MapView() {
 
 const zOrder = (it: MapItem) => (it.type === 'road' ? 0 : it.type === 'building' ? 1 : it.type === 'fire' ? 3 : it.type === 'team' ? 4 : 2);
 
-function ItemShape({ it, data, now, selected }: { it: MapItem; data: SessionData; now: number; selected: boolean }) {
+/** 표시물 하나 — 크기 배율은 표시물 가운데를 기준으로 키우고 줄인다 */
+function ItemShape(props: { it: MapItem; data: SessionData; now: number; selected: boolean }) {
+  const { it } = props;
+  const s = itemScale(it);
+  if (s === 1) return <ItemBody {...props} />;
+  return (
+    <g transform={`translate(${it.x} ${it.y}) scale(${s}) translate(${-it.x} ${-it.y})`}>
+      <ItemBody {...props} />
+    </g>
+  );
+}
+
+function ItemBody({ it, data, now, selected }: { it: MapItem; data: SessionData; now: number; selected: boolean }) {
   const t = MAP_TYPES[it.type] ?? MAP_TYPES.text;
   const { w, h } = sizeOf(it);
   const color = it.color ?? t.color;
@@ -658,12 +712,15 @@ export function Inspector({
   data,
   now,
   onPatch,
+  readOnly,
 }: {
-  it: Pick<MapItem, 'id' | 'type' | 'label' | 'color' | 'teamId'>;
+  it: Pick<MapItem, 'id' | 'type' | 'label' | 'color' | 'teamId' | 'scale'>;
   data: SessionData;
   now: number;
-  onPatch: (p: { label?: string; color?: string }) => void;
+  onPatch: (p: { label?: string; color?: string; scale?: number }) => void;
+  readOnly?: boolean;
 }) {
+  const sizeBox = readOnly ? null : <SizeControl scale={itemScale(it)} onChange={(scale) => onPatch({ scale })} />;
   const t = MAP_TYPES[it.type];
   const [label, setLabel] = useState(it.label ?? '');
   useEffect(() => setLabel(it.label ?? ''), [it.id, it.label]);
@@ -690,6 +747,7 @@ export function Inspector({
             <Wrench size={15} /> {team.task}
           </p>
         )}
+        {sizeBox}
         <p className="hint">대 정보는 현황판 → 진입대 탭에서 바꿉니다.</p>
       </div>
     );
@@ -707,19 +765,40 @@ export function Inspector({
         <input
           value={label}
           placeholder={t?.label}
+          disabled={readOnly}
           onChange={(e) => setLabel(e.target.value)}
-          onBlur={() => label !== (it.label ?? '') && onPatch({ label: label.trim() || undefined })}
+          onBlur={() => label !== (it.label ?? '') && onPatch({ label: label.trim() })}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
       </label>
-      {it.type !== 'fire' && (
+      {it.type !== 'fire' && !readOnly && (
         <div className="colors">
           {MAP_COLORS.map((c) => (
             <button key={c} className={`swatch ${it.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => onPatch({ color: c })} aria-label={c} />
           ))}
         </div>
       )}
-      {(it.type === 'building' || it.type === 'road') && <p className="hint">오른쪽 아래 파란 네모를 끌어 크기를 바꿉니다.</p>}
+      {sizeBox}
+      {(it.type === 'building' || it.type === 'road') && <p className="hint">오른쪽 아래 파란 네모를 끌면 가로·세로를 따로 바꿀 수 있습니다.</p>}
+    </div>
+  );
+}
+
+/** 표시물 크기 — − / + 로 25%씩, 가운데 숫자를 누르면 원래 크기 */
+function SizeControl({ scale, onChange }: { scale: number; onChange: (s: number) => void }) {
+  const set = (v: number) => onChange(Math.round(Math.max(SCALE_MIN, Math.min(SCALE_MAX, v)) * 100) / 100);
+  return (
+    <div className="size-ctl">
+      <span>크기</span>
+      <button className="btn small icon-only" disabled={scale <= SCALE_MIN} onClick={() => set(scale - SCALE_STEP)} aria-label="작게">
+        <Minus size={18} />
+      </button>
+      <button className="btn small size-val" disabled={scale === 1} onClick={() => set(1)} title="원래 크기로">
+        {Math.round(scale * 100)}%
+      </button>
+      <button className="btn small icon-only" disabled={scale >= SCALE_MAX} onClick={() => set(scale + SCALE_STEP)} aria-label="크게">
+        <Plus size={18} />
+      </button>
     </div>
   );
 }

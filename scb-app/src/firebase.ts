@@ -1,6 +1,17 @@
 import { initializeApp } from 'firebase/app';
 import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
-import { connectAuthEmulator, getAuth, GoogleAuthProvider, signInAnonymously, signInWithPopup } from 'firebase/auth';
+import type { FirebaseError } from 'firebase/app';
+import {
+  connectAuthEmulator,
+  getAuth,
+  GoogleAuthProvider,
+  linkWithPopup,
+  signInAnonymously,
+  signInWithCredential,
+  signInWithPopup,
+  signOut,
+  type User,
+} from 'firebase/auth';
 
 export const usingEmulator = import.meta.env.DEV && import.meta.env.VITE_USE_EMULATOR === '1';
 
@@ -38,12 +49,36 @@ export function deviceUid(): Promise<string> {
   return signingIn;
 }
 
-/** Keep the same owner identity when signing in from another PC. */
+/**
+ * 다른 PC에서도 같은 개설자 권한을 쓰도록 Google 계정에 묶는다.
+ * 익명으로 쓰던 기기는 그 계정에 Google을 연결해서 UID(=지금까지의 권한)를 그대로 유지한다.
+ * 이미 다른 곳에서 쓰던 Google 계정이면 그 계정으로 전환한다 (이 기기의 익명 권한은 남지 않음).
+ */
 export async function googleLogin() {
   await auth.authStateReady();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  const result = await signInWithPopup(auth, provider);
+  const current = auth.currentUser;
+  let user: User;
+  if (current?.isAnonymous) {
+    try {
+      user = (await linkWithPopup(current, provider)).user;
+    } catch (e) {
+      const cred = (e as { code?: string }).code === 'auth/credential-already-in-use'
+        ? GoogleAuthProvider.credentialFromError(e as FirebaseError)
+        : null;
+      if (!cred) throw e;
+      user = (await signInWithCredential(auth, cred)).user;
+    }
+  } else {
+    user = (await signInWithPopup(auth, provider)).user;
+  }
   signingIn = null;
-  return result.user;
+  return user;
+}
+
+/** 로그아웃하면 다음 접속 때 새 익명 기기로 시작한다 */
+export async function logout() {
+  await signOut(auth);
+  signingIn = null;
 }
